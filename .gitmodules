@@ -1,0 +1,3 @@
+[submodule "lib/ESPUI"]
+	path = lib/ESPUI
+	url = https://github.com/s00500/ESPUI
