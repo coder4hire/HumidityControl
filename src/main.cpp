@@ -31,6 +31,8 @@
 #include <ESP8266mDNS.h>
 #endif
 
+#include "HumSensors.h"
+
 //Settings
 #define SLOW_BOOT 0
 #define HOSTNAME "HUMCTL"
@@ -46,6 +48,8 @@ void generalCallback(Control *sender, int type);
 //UI handles
 uint16_t wifi_ssid_text, wifi_pass_text;
 volatile bool updates = false;
+
+HumSensors sensors;
 
 struct SensorData
 {
@@ -159,6 +163,7 @@ void setup()
 	}
 
 	setUpUI();
+	sensors.init();
 }
 
 void loop()
@@ -166,8 +171,9 @@ void loop()
 	static long unsigned lastTime = 0;
 
 	//Send periodic updates if switcher is turned on
-	if (updates && millis() > lastTime + 500)
+	if (millis() > lastTime + 5000)
 	{
+		sensors.refreshData();
 		lastTime = millis();
 	}
 
