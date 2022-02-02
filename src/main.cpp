@@ -49,16 +49,14 @@ void generalCallback(Control *sender, int type);
 uint16_t wifi_ssid_text, wifi_pass_text;
 volatile bool updates = false;
 
-HumSensors sensors;
-
-struct SensorData
+struct SensorGUIData
 {
 	int16_t ctrlID = 0;
 	double value = 0;
 	String name;
 };
 
-std::vector<SensorData> Sensors(3);
+std::vector<SensorGUIData> Sensors(3);
 
 // This is the main function which builds our GUI
 void setUpUI()
@@ -147,14 +145,17 @@ void generalCallback(Control *sender, int type)
 void setup()
 {
 	Serial.begin(115200);
+
+	Serial.println("sensors init");
+	HumSensors::init();
+	Serial.println("sensors init done");
+
 	while (!Serial)
 		;
 	if (SLOW_BOOT)
 		delay(5000); //Delay booting to give time to connect a serial monitor
 	connectWifi();
-#if defined(ESP32)
-	WiFi.setSleep(false); //For the ESP32: turn off sleeping to increase UI responsivness (at the cost of power use)
-#endif
+	WiFi.setSleep(true); //Sleep should be enabled for Bluetooth
 
 	//--- Set up sensors structure
 	for(int i=0;i<Sensors.size();i++)
@@ -163,7 +164,6 @@ void setup()
 	}
 
 	setUpUI();
-	sensors.init();
 }
 
 void loop()
@@ -173,7 +173,9 @@ void loop()
 	//Send periodic updates if switcher is turned on
 	if (millis() > lastTime + 5000)
 	{
-		sensors.refreshData();
+		Serial.println("refresh data");
+		HumSensors::refreshData();
+		Serial.println("refresh done");
 		lastTime = millis();
 	}
 
