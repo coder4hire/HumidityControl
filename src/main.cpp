@@ -147,7 +147,7 @@ void setup()
 	Serial.begin(115200);
 
 	Serial.println("sensors init");
-	HumSensors::init();
+	//HumSensors::init();
 	Serial.println("sensors init done");
 
 	while (!Serial)
@@ -164,6 +164,7 @@ void setup()
 	}
 
 	setUpUI();
+	startBLETask();
 }
 
 void loop()
@@ -171,13 +172,13 @@ void loop()
 	static long unsigned lastTime = 0;
 
 	//Send periodic updates if switcher is turned on
-	if (millis() > lastTime + 5000)
-	{
-		Serial.println("refresh data");
-		HumSensors::refreshData();
-		Serial.println("refresh done");
-		lastTime = millis();
-	}
+//	if (millis() > lastTime + 5000)
+//	{
+//		Serial.println("refresh data");
+//		HumSensors::refreshData();
+//		Serial.println("refresh done");
+//		lastTime = millis();
+//	}
 
 	//Simple debug UART interface
 	if (Serial.available())
