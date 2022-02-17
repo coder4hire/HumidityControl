@@ -7,6 +7,8 @@ Xiaomi humidity/temperature BLE sensors data pulling class*/
 std::unique_ptr<BLEClientExt> BLEClientExt::pInst;
 BLEScan *HumSensors::pBLEScan;
 std::map<NimBLEAddress, std::unique_ptr<BLEClientExt>> HumSensors::clients;
+std::map<std::string, SensorData> HumSensors::readings;
+std::mutex HumSensors::mtx;
 
 // The remote service we wish to connect to.
 // BLEUUID BLEClientExt::serviceUUID("ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6");
@@ -66,7 +68,13 @@ void HumSensors::refreshData()
       retries--);
   }
 
-  delay(10000);
+  auto start = millis();
+  while(millis()<start+10000 && millis()>=start &&
+    std::any_of(clients.begin(),clients.end(),
+    [](const std::pair<const NimBLEAddress, std::unique_ptr<BLEClientExt>>& c){return c.second->isConnected();}))
+  {
+    delay(1000);
+  }
 
   for (const auto &pair : clients)
   {
@@ -90,9 +98,22 @@ void vTaskCode(void *pvParameters)
   for (;;)
   {
     HumSensors::refreshData();
-    delay(5000);
+    delay(15000);
   }
 }
+
+std::map<std::string, SensorData> HumSensors::getReadings()
+{
+  std::lock_guard<std::mutex> lock(mtx);
+  return readings;
+}
+
+void HumSensors::setReadings(NimBLEAddress addr, SensorData data)
+{
+  std::lock_guard<std::mutex> lock(mtx);
+  readings[addr]=data;
+}
+
 
 /* Function that creates a task. */
 void startBLETask(void)

@@ -3,16 +3,36 @@
 #include <NimBLEDevice.h>
 #include <memory>
 #include <chrono>
+#include <mutex>
 
 #define SCAN_TIME 10
 
 struct SensorData
 {
     float temp = 0;
-    float humi = 0;
+    float humidity = 0;
     float voltage = 0;
     std::chrono::system_clock::time_point timestamp;
 };
+
+class BLEClientExt;
+
+class HumSensors
+{
+public:
+    static void init();
+    static void refreshClientsList();
+    static void refreshData();
+    static std::map<std::string, SensorData> getReadings();
+    static void setReadings(NimBLEAddress addr, SensorData data);
+
+protected:
+    static NimBLEScan *pBLEScan;
+    static std::map<NimBLEAddress, std::unique_ptr<BLEClientExt>> clients;
+    static std::map<std::string, SensorData> readings;
+    static std::mutex mtx;
+};
+
 
 class BLEClientExt
 {
@@ -39,12 +59,15 @@ public:
 
     bool connectAndRegisterNotifications()
     {
-        Serial.println("callback...");
         if (pClient->connect(peerAddress,false))
         {
-            Serial.println("+++ Connected...");
-
             NimBLERemoteService *pRemoteService = pClient->getService(serviceUUID);
+            if (pRemoteService == nullptr) {
+                // Perform full service refresh
+                pClient->getServices(true);
+                pRemoteService = pClient->getService(serviceUUID);
+            }
+
             if (pRemoteService == nullptr)
             {
                 Serial.print(" - Failed to find our service UUID: ");
@@ -53,7 +76,6 @@ public:
                 return false;
             }
 
-            // pRemoteService->getCharacteristics(true);
             //  Obtain a reference to the characteristic in the service of the remote BLE server.
             NimBLERemoteCharacteristic *pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
             if (pRemoteCharacteristic == nullptr)
@@ -63,10 +85,7 @@ public:
                 disconnect();
                 return false;
             }
-            Serial.println("registering...");
             pRemoteCharacteristic->registerForNotify(notifyCallback);
-            Serial.println("connect done...");
-            // disconnect();
             return true;
         }
         return false;
@@ -74,7 +93,10 @@ public:
 
     void disconnect()
     {
-        pClient->disconnect();
+        if(isConnected())
+        {
+            pClient->disconnect();
+        }
     }
 
     SensorData getData()
@@ -112,14 +134,17 @@ protected:
         bool isNotify)
     {
         NimBLEClient *pClient = pBLERemoteCharacteristic->getRemoteService()->getClient();
-        Serial.printf("*** callback for client: %d\n", (int)pClient);
+        Serial.printf("*** callback for client: %s\n", ((std::string)pClient->getPeerAddress()).c_str());
         SensorData dt;
-        Serial.printf("*** Callback is called: %d\n", length);
-        dt.temp = (pData[0] | (pData[1] << 8)) * 0.01; // little endian
-        dt.humi = pData[2];
-        dt.voltage = (pData[3] | (pData[4] << 8)) * 0.001; // little endian
+        if(length>=5)
+        {
+            dt.temp = (pData[0] | (pData[1] << 8)) * 0.01; // little endian
+            dt.humidity = pData[2];
+            dt.voltage = (pData[3] | (pData[4] << 8)) * 0.001; // little endian
+        }
         dt.timestamp = std::chrono::system_clock::now();
-        // getInstance().disconnect();
+        HumSensors::setReadings(pClient->getPeerAddress(),dt);
+        pClient->disconnect();
     }
 
     SensorData data;
@@ -127,18 +152,6 @@ protected:
 private:
     BLEUUID serviceUUID;
     BLEUUID charUUID;
-};
-
-class HumSensors
-{
-public:
-    static void init();
-    static void refreshClientsList();
-    static void refreshData();
-
-protected:
-    static NimBLEScan *pBLEScan;
-    static std::map<NimBLEAddress, std::unique_ptr<BLEClientExt>> clients;
 };
 
 void startBLETask(void);

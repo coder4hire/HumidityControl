@@ -32,6 +32,7 @@
 #endif
 
 #include "HumSensors.h"
+#include "SensorsNames.h"
 
 //Settings
 #define SLOW_BOOT 0
@@ -51,12 +52,16 @@ volatile bool updates = false;
 
 struct SensorGUIData
 {
-	int16_t ctrlID = 0;
+	int16_t idHum = 0;
+	int16_t idTemp = 0;
+	int16_t idBatt = 0;
 	double value = 0;
-	String name;
+	std::string name;
 };
 
-std::vector<SensorGUIData> Sensors(3);
+#define MAX_SENSORS_NUM 3
+
+std::vector<SensorGUIData> Sensors(MAX_SENSORS_NUM);
 
 // This is the main function which builds our GUI
 void setUpUI()
@@ -82,7 +87,9 @@ void setUpUI()
 	ESPUI.addControl(Separator, "Humidity", "", None, statusTab);
 	for (int i = 0; i < Sensors.size(); i++)
 	{
-		Sensors[i].ctrlID = ESPUI.addControl(Label, Sensors[i].name.c_str(), "10", Turquoise, statusTab, generalCallback);
+		Sensors[i].idHum = ESPUI.addControl(Label, Sensors[i].name.c_str(), "---", Turquoise, statusTab, generalCallback);
+		Sensors[i].idTemp = ESPUI.addControl(Label, Sensors[i].name.c_str(), "---", Turquoise, Sensors[i].idHum, generalCallback);
+		Sensors[i].idBatt = ESPUI.addControl(Label, Sensors[i].name.c_str(), "---", Turquoise, Sensors[i].idHum, generalCallback);
 	//	ESPUI.addControl(Min, "", "10", None, Sensors[i].ctrlID);
 	//	ESPUI.addControl(Max, "", "400", None, Sensors[i].ctrlID);
 	}
@@ -158,10 +165,7 @@ void setup()
 	WiFi.setSleep(true); //Sleep should be enabled for Bluetooth
 
 	//--- Set up sensors structure
-	for(int i=0;i<Sensors.size();i++)
-	{
-		Sensors[i].name = String("Sensor ")+String(i);
-	}
+	SET_SENSORS_NAMES;
 
 	setUpUI();
 	startBLETask();
@@ -172,13 +176,29 @@ void loop()
 	static long unsigned lastTime = 0;
 
 	//Send periodic updates if switcher is turned on
-//	if (millis() > lastTime + 5000)
-//	{
-//		Serial.println("refresh data");
+	auto now = millis();
+	if (now > lastTime + 5000 || now < lastTime)
+	{
 //		HumSensors::refreshData();
-//		Serial.println("refresh done");
-//		lastTime = millis();
-//	}
+		auto readings = HumSensors::getReadings();
+		for(int i=0;i<Sensors.size();i++)
+		{
+			try
+			{
+				const auto& data = readings.at(Sensors[i].name);
+				ESPUI.updateLabel(Sensors[i].idHum,String(data.humidity)+" %");
+				ESPUI.updateLabel(Sensors[i].idTemp,String(data.temp) +" C");
+				ESPUI.updateLabel(Sensors[i].idBatt,String(data.voltage)+" V");
+			}
+			catch(...)
+			{
+				ESPUI.updateLabel(Sensors[i].idHum,"- NO DATA -");
+				ESPUI.updateLabel(Sensors[i].idTemp,"- NO DATA -");
+				ESPUI.updateLabel(Sensors[i].idBatt,"- NO DATA -");
+			}
+		}
+		lastTime=now;
+	}
 
 	//Simple debug UART interface
 	if (Serial.available())
