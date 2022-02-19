@@ -85,7 +85,7 @@ public:
                 disconnect();
                 return false;
             }
-            pRemoteCharacteristic->registerForNotify(notifyCallback);
+            pRemoteCharacteristic->subscribe(true,notifyCallback);
             return true;
         }
         return false;
