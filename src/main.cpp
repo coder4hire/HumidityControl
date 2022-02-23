@@ -26,6 +26,7 @@
 #endif
 
 #include "HumSensors.h"
+#include "SmartPlugInterface.h"
 #include "SensorsNames.h"
 
 // Settings
@@ -245,6 +246,11 @@ void loop()
 				ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(gray, Unknown));
 			}
 		}
+
+		SmartPlugInterface plug(TASMOTA_PARAMS);
+		SmartPlugReadings plugData = plug.getReadings();
+		Serial.printf("Power=%d; Voltage=%d\n",plugData.power,plugData.voltage);
+
 		lastTime = now;
 	}
 
