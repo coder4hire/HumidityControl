@@ -4,6 +4,7 @@
 #include <memory>
 #include <chrono>
 #include <mutex>
+#include <atomic>
 
 #define SCAN_TIME 10
 
@@ -25,12 +26,17 @@ public:
     static void refreshData();
     static std::map<std::string, SensorData> getReadings();
     static void setReadings(NimBLEAddress addr, SensorData data);
+    static void startBLETask(void);
+    static void setPollInterval(int value){pollInterval=value;}
 
 protected:
     static NimBLEScan *pBLEScan;
     static std::map<NimBLEAddress, std::unique_ptr<BLEClientExt>> clients;
     static std::map<std::string, SensorData> readings;
     static std::mutex mtx;
+    static std::atomic_int pollInterval;
+
+    static void vTaskCode(void *pvParameters);
 };
 
 
@@ -153,5 +159,3 @@ private:
     BLEUUID serviceUUID;
     BLEUUID charUUID;
 };
-
-void startBLETask(void);

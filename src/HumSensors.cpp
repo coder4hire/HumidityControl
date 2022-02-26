@@ -9,6 +9,7 @@ BLEScan *HumSensors::pBLEScan;
 std::map<NimBLEAddress, std::unique_ptr<BLEClientExt>> HumSensors::clients;
 std::map<std::string, SensorData> HumSensors::readings;
 std::mutex HumSensors::mtx;
+std::atomic_int HumSensors::pollInterval;
 
 // The remote service we wish to connect to.
 // BLEUUID BLEClientExt::serviceUUID("ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6");
@@ -90,15 +91,20 @@ void HumSensors::refreshData()
 }
 
 /* Task to be created. */
-void vTaskCode(void *pvParameters)
+void HumSensors::vTaskCode(void *pvParameters)
 {
   Serial.println("*************** Task started *******************");
+  if(!pollInterval)
+  {
+    pollInterval=30; // Just to avoid possible problems
+  }
+
   HumSensors::init();
   HumSensors::refreshClientsList();
   for (;;)
   {
     HumSensors::refreshData();
-    delay(15000);
+    delay(pollInterval*1000);
   }
 }
 
@@ -116,7 +122,7 @@ void HumSensors::setReadings(NimBLEAddress addr, SensorData data)
 
 
 /* Function that creates a task. */
-void startBLETask(void)
+void HumSensors::startBLETask(void)
 {
   TaskHandle_t xHandle = NULL;
 
@@ -128,10 +134,4 @@ void startBLETask(void)
       (void *)1,        /* Parameter passed into the task. */
       tskIDLE_PRIORITY, /* Priority at which the task is created. */
       &xHandle);        /* Used to pass out the created task's handle. */
-
-  // if( xReturned == pdPASS )
-  //{
-  /* The task was created.  Use the task's handle to delete the task. */
-  // vTaskDelete( xHandle );
-  // }
 }

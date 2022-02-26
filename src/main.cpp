@@ -17,23 +17,18 @@
 #include <EEPROM.h>
 #include <ESPUI.h>
 
-#if defined(ESP32)
 #include <WiFi.h>
 #include <ESPmDNS.h>
-#else
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#endif
 
 #include "HumSensors.h"
 #include "SmartPlugInterface.h"
-#include "SensorsNames.h"
+#include "Config.h"
+#include "DataStructures.h"
 
 // Settings
 #define SLOW_BOOT 0
 #define HOSTNAME "HUMCTL"
 #define FORCE_USE_HOTSPOT 0
-#define MAX_UNITS_NUM 3
 
 // Function Prototypes
 void connectWifi();
@@ -42,41 +37,24 @@ void enterWifiDetailsCallback(Control *sender, int type);
 void textCallback(Control *sender, int type);
 void generalCallback(Control *sender, int type);
 void enabledCallback(Control *sender, int type);
+void saveCfgCallback(Control *sender, int type);
+void resetCfgCallback(Control *sender, int type);
+void settingsTabCallback(Control *sender, int type);
+void refreshSensorsListCallback(Control *sender, int type);
+
+void refreshSettings();
+String getFoundSensorsList();
 
 // UI handles
 uint16_t wifi_ssid_text, wifi_pass_text;
-volatile bool updates = false;
 
-struct UnitIDs
-{
-	// GUI
-	int16_t idLabel = 0;
-	int16_t idOn = 0;
-	int16_t idWater = 0;
+Preferences prefs;
 
-	// Settings
-	int16_t idEnabled = 0;
-	int16_t idName = 0;
-	int16_t idAddr = 0;
-	int16_t idMin = 0;
-	int16_t idMax = 0;
-};
-
-
-struct UnitData
-{
-	UnitIDs IDs;
-
-	bool isEnabled = false;
-	String name;
-	std::string addr;
-	int minThr = 0;
-	int maxThr = 0;
-};
-
+GeneralCfgIDs generalCfgIDs;
+GeneralConfig generalCfg;
 std::vector<UnitData> Units(MAX_UNITS_NUM);
 
-String ledStyle = "<span style='border-radius:50%;width:15px;height:15px;display:inline-block;border:1px;border-style:solid;margin-right:5px;background:";
+String ledStyle = "<span style='border-radius:50%;width:15px;height:15px;display:inline-block;border:1px;border-style:solid;margin-right:5px;color:dimgray;background:";
 String divStyle = "<div style='width:7em;display:inline-block'>";
 #define LED_LABEL(color, text) ledStyle + #color "'/>" + divStyle + #text "</span>"
 
@@ -84,80 +62,66 @@ String divStyle = "<div style='width:7em;display:inline-block'>";
 void setUpUI()
 {
 	// Turn off verbose debugging
-	ESPUI.setVerbosity(Verbosity::Verbose);
+	ESPUI.setVerbosity(Verbosity::Quiet);
 
-	// Make sliders continually report their position as they are being dragged.
-	ESPUI.sliderContinuous = true;
-
-	// This GUI is going to be a tabbed GUI, so we are adding most controls using ESPUI.addControl
-	// which allows us to set a parent control. If we didn't need tabs we could use the simpler add
-	// functions like:
-	//     ESPUI.button()
-	//     ESPUI.label()
-
-	/*
-	 * Tab: Basic Controls
-	 * This tab contains all the basic ESPUI controls, and shows how to read and update them at runtime.
-	 *-----------------------------------------------------------------------------------------------------------*/
 	auto statusTab = ESPUI.addControl(Tab, "", "Status");
 
 	ESPUI.addControl(Separator, "Humidity", "", None, statusTab);
 	for (int i = 0; i < Units.size(); i++)
 	{
-		Units[i].IDs.idLabel = ESPUI.addControl(Label, Units[i].addr.c_str(), "---", Turquoise, statusTab, generalCallback);
+		Units[i].IDs.idLabel = ESPUI.addControl(Label, !Units[i].cfg.name[0] ? Units[i].cfg.addr : Units[i].cfg.name, "---", Turquoise, statusTab, generalCallback);
 		Units[i].IDs.idOn = ESPUI.addControl(Label, "", LED_LABEL(gray, Unknown), Turquoise, Units[i].IDs.idLabel, generalCallback);
 		Units[i].IDs.idWater = ESPUI.addControl(Label, "", LED_LABEL(gray, Unknown), Turquoise, Units[i].IDs.idLabel, generalCallback);
 	}
 
-	auto settingsTab = ESPUI.addControl(Tab, "", "Settings");
+	auto settingsTab = ESPUI.addControl(Tab, "", "Settings", None, Control::noParent, settingsTabCallback);
 	ESPUI.addControl(Separator, "Units Settings", "", None, settingsTab);
+
 	String clearLabelStyle = "background-color: unset; width: 100%;";
-	String newLineStyle = "background-color: unset; width: 100%;";	
-//	String ctrlStyle = "width: 80% !important;";	
+	String newLineStyle = "background-color: unset; width: 100%;";
+	// String ctrlStyle = "width: 80% !important;";
 	for (int i = 0; i < Units.size(); i++)
 	{
-		Units[i].IDs.idEnabled = ESPUI.addControl(Switcher, Units[i].name == "" ? "- UNIT -" : Units[i].name.c_str(), "0", Wetasphalt, settingsTab, enabledCallback);
-		const auto& root = Units[i].IDs.idEnabled;
+		sprintf(Units[i].label, "Unit %d", i);
+		Units[i].IDs.idEnabled = ESPUI.addControl(Switcher, Units[i].label, Units[i].cfg.isEnabled ? "1" : "0", Wetasphalt, settingsTab, enabledCallback);
+		const auto &root = Units[i].IDs.idEnabled;
 		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "", None, root), newLineStyle);
-		
+
 		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Name : ", None, root), clearLabelStyle);
-		Units[i].IDs.idName = ESPUI.addControl(Text, "", Units[i].name, None, root, textCallback);
-		ESPUI.addControl(Max, "", "32", None, Units[i].IDs.idName);
-//		ESPUI.setElementStyle(Units[i].IDs.idName,ctrlStyle);
-		
-		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Addr : ", None, root), clearLabelStyle);		
-		Units[i].IDs.idAddr = ESPUI.addControl(Text, "", Units[i].addr.c_str(), None, root, textCallback);
-		ESPUI.addControl(Max, "", "32", None, Units[i].IDs.idAddr);
-//		ESPUI.setElementStyle(Units[i].IDs.idAddr,ctrlStyle);
+		Units[i].IDs.idName = ESPUI.addControl(Text, "", Units[i].cfg.name, None, root, textCallback);
+		ESPUI.addControl(Max, "", "31", None, Units[i].IDs.idName);
+		//	ESPUI.setElementStyle(Units[i].IDs.idName, ctrlStyle);
+
+		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Addr : ", None, root), clearLabelStyle);
+		Units[i].IDs.idAddr = ESPUI.addControl(Text, "", Units[i].cfg.addr, None, root, textCallback);
+		ESPUI.addControl(Max, "", "31", None, Units[i].IDs.idAddr);
+		//	ESPUI.setElementStyle(Units[i].IDs.idAddr, ctrlStyle);
 
 		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Min : ", None, root), clearLabelStyle);
-		Units[i].IDs.idMin = ESPUI.addControl(Number, "", String(Units[i].minThr), None, root, generalCallback);
+		Units[i].IDs.idMin = ESPUI.addControl(Number, "", String(Units[i].cfg.minThr), None, root, generalCallback);
 		ESPUI.addControl(Min, "", "0", None, Units[i].IDs.idMin);
 		ESPUI.addControl(Max, "", "100", None, Units[i].IDs.idMin);
 
 		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Max : ", None, root), clearLabelStyle);
-		Units[i].IDs.idMax = ESPUI.addControl(Number, "", String(Units[i].maxThr), None, root, generalCallback);
+		Units[i].IDs.idMax = ESPUI.addControl(Number, "", String(Units[i].cfg.maxThr), None, root, generalCallback);
 		ESPUI.addControl(Min, "", "0", None, Units[i].IDs.idMax);
 		ESPUI.addControl(Max, "", "100", None, Units[i].IDs.idMax);
+
+		ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Smart Plug : ", None, root), clearLabelStyle);
+		Units[i].IDs.idPlugAddr = ESPUI.addControl(Text, "", Units[i].cfg.plugAddr, None, root, textCallback);
+		ESPUI.addControl(Max, "", "127", None, Units[i].IDs.idAddr);
 	}
 
+	generalCfgIDs.idPollInterval = ESPUI.addControl(Number, "Poll Interval", String(generalCfg.pollInterval), None, settingsTab, textCallback);
+	ESPUI.addControl(Min, "", "10", None, generalCfgIDs.idPollInterval);
+	ESPUI.addControl(Max, "", "32000", None, generalCfgIDs.idPollInterval);
+
+	generalCfgIDs.idSave = ESPUI.addControl(Button, "Save /Reset", "Save", Peterriver, settingsTab, saveCfgCallback);
+	generalCfgIDs.idReset = ESPUI.addControl(Button, "", "Reset", Peterriver, generalCfgIDs.idSave, resetCfgCallback);
+
 	ESPUI.addControl(Separator, "Found Sensors", "", None, settingsTab);
-	uint16_t idFoundSensors = ESPUI.addControl(Label, "Found Sensors", "--- No Sensors Found ---", Turquoise, settingsTab, generalCallback);
-
-	//	mainLabel = ESPUI.addControl(Label, "Label", "Label text", Emerald, maintab, generalCallback);
-	//	mainSwitcher = ESPUI.addControl(Switcher, "Switcher", "", Sunflower, maintab, generalCallback);
-
-	// Sliders default to being 0 to 100, but if you want different limits you can add a Min and Max control
-	//	mainSlider = ESPUI.addControl(Slider, "Slider", "200", Turquoise, maintab, generalCallback);
-	//	ESPUI.addControl(Min, "", "10", None, mainSlider);
-	//	ESPUI.addControl(Max, "", "400", None, mainSlider);
-
-	// Number inputs also accept Min and Max components, but you should still validate the values.
-	//	mainNumber = ESPUI.addControl(Number, "Number Input", "42", Emerald, maintab, generalCallback);
-	//	ESPUI.addControl(Min, "", "10", None, mainNumber);
-	//	ESPUI.addControl(Max, "", "50", None, mainNumber);
-
-	//	styleSwitcher = ESPUI.addControl(Switcher, "Styled Switcher", "1", Alizarin, styletab, generalCallback);
+	generalCfgIDs.idFoundSensors = ESPUI.addControl(Label, "Found Sensors", getFoundSensorsList(), Turquoise, settingsTab, generalCallback);
+	generalCfgIDs.idRefresh = ESPUI.addControl(Button, "", "Refresh", Turquoise, generalCfgIDs.idFoundSensors, refreshSensorsListCallback);
 
 	/*
 	 * Tab: WiFi Credentials
@@ -173,7 +137,7 @@ void setUpUI()
 
 	// Finally, start up the UI.
 	// This should only be called once we are connected to WiFi.
-	ESPUI.begin("  Humidity Control");
+	ESPUI.begin("Humidity Control");
 }
 
 // Set the various controls to random value to show how controls can be updated at runtime
@@ -212,11 +176,12 @@ void setup()
 	connectWifi();
 	WiFi.setSleep(true); // Sleep should be enabled for Bluetooth
 
-	//--- Set up sensors structure
-	SET_SENSORS_NAMES;
+	//--- Loading config
+	loadSystemCfg();
+	HumSensors::setPollInterval(generalCfg.pollInterval);
 
 	setUpUI();
-	startBLETask();
+	HumSensors::startBLETask();
 }
 
 void loop()
@@ -225,7 +190,7 @@ void loop()
 
 	// Send periodic updates if switcher is turned on
 	auto now = millis();
-	if (now > lastTime + 5000 || now < lastTime)
+	if (now > lastTime + 50000 || now < lastTime)
 	{
 		//		HumSensors::refreshData();
 		auto readings = HumSensors::getReadings();
@@ -233,23 +198,23 @@ void loop()
 		{
 			try
 			{
-				const auto &data = readings.at(Units[i].addr);
+				const auto &data = readings.at(Units[i].cfg.addr);
 				ESPUI.updateLabel(Units[i].IDs.idLabel, String((int)data.humidity) + "%    " + String(data.temp, 1) + "&#176C    (" +
-														  String(data.voltage) + " V)");
+															String(data.voltage) + " V)");
 				ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(green, Spraying));
 				ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(blue, Water));
 			}
 			catch (...)
 			{
-				ESPUI.updateLabel(Units[i].IDs.idLabel,"- NO DATA -");
+				ESPUI.updateLabel(Units[i].IDs.idLabel, "- NO DATA -");
 				ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(gray, Unknown));
 				ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(gray, Unknown));
 			}
 		}
 
-		SmartPlugInterface plug(TASMOTA_PARAMS);
-		SmartPlugReadings plugData = plug.getReadings();
-		Serial.printf("Power=%d; Voltage=%d\n",plugData.power,plugData.voltage);
+		//		SmartPlugInterface plug(TASMOTA_PARAMS);
+		//		SmartPlugReadings plugData = plug.getReadings();
+		//		Serial.printf("Power=%d; Voltage=%d\n", plugData.power, plugData.voltage);
 
 		lastTime = now;
 	}
@@ -285,18 +250,6 @@ void loop()
 //
 // If you are here just to see examples of how to use ESPUI, you can ignore the following functions
 //------------------------------------------------------------------------------------------------
-void readStringFromEEPROM(String &buf, int baseaddress, int size)
-{
-	buf.reserve(size);
-	for (int i = baseaddress; i < baseaddress + size; i++)
-	{
-		char c = EEPROM.read(i);
-		buf += c;
-		if (!c)
-			break;
-	}
-}
-
 void connectWifi()
 {
 	int connect_timeout;
@@ -308,11 +261,8 @@ void connectWifi()
 	if (!(FORCE_USE_HOTSPOT))
 	{
 		yield();
-		EEPROM.begin(100);
 		String stored_ssid, stored_pass;
-		readStringFromEEPROM(stored_ssid, 0, 32);
-		readStringFromEEPROM(stored_pass, 32, 96);
-		EEPROM.end();
+		loadWifiCfg(stored_ssid, stored_pass);
 
 // Try to connect with stored credentials, fire up an access point if they don't work.
 #if defined(ESP32)
@@ -356,31 +306,84 @@ void connectWifi()
 	}
 }
 
+void refreshSettings()
+{
+	for (int i = 0; i < Units.size(); i++)
+	{
+		ESPUI.updateControlValue(Units[i].IDs.idEnabled, Units[i].cfg.isEnabled ? "1" : "0");
+		ESPUI.updateControlValue(Units[i].IDs.idName, Units[i].cfg.name);
+		ESPUI.updateControlValue(Units[i].IDs.idAddr, Units[i].cfg.addr);
+		ESPUI.updateControlValue(Units[i].IDs.idMin, String(Units[i].cfg.minThr));
+		ESPUI.updateControlValue(Units[i].IDs.idMax, String(Units[i].cfg.maxThr));
+	}
+	ESPUI.updateControlValue(generalCfgIDs.idPollInterval, String(generalCfg.pollInterval));
+}
+
+String getFoundSensorsList()
+{
+	auto readings = HumSensors::getReadings();
+	String retVal;
+	for (const auto &data : readings)
+	{
+		retVal += String(data.first.c_str()) + " (" + String(data.second.temp, 1) + " / " + String((int)data.second.humidity) + "% )\n";
+	}
+	return retVal != "" ? retVal : "--- No Sensors Found ---";
+}
+
 void enterWifiDetailsCallback(Control *sender, int type)
 {
 	if (type == B_UP)
 	{
 		Serial.println("Saving credentials to EPROM...");
-		Serial.println(ESPUI.getControl(wifi_ssid_text)->value);
-		Serial.println(ESPUI.getControl(wifi_pass_text)->value);
-		unsigned int i;
-		EEPROM.begin(100);
-		for (i = 0; i < ESPUI.getControl(wifi_ssid_text)->value.length(); i++)
-		{
-			EEPROM.write(i, ESPUI.getControl(wifi_ssid_text)->value.charAt(i));
-			if (i == 30)
-				break; // Even though we provided a max length, user input should never be trusted
-		}
-		EEPROM.write(i, '\0');
+		saveWifiCfg(ESPUI.getControl(wifi_ssid_text)->value, ESPUI.getControl(wifi_pass_text)->value);
+	}
+}
 
-		for (i = 0; i < ESPUI.getControl(wifi_pass_text)->value.length(); i++)
+void saveCfgCallback(Control *sender, int type)
+{
+	if (type == B_UP)
+	{
+		for (int i = 0; i < Units.size(); i++)
 		{
-			EEPROM.write(i + 32, ESPUI.getControl(wifi_pass_text)->value.charAt(i));
-			if (i == 94)
-				break; // Even though we provided a max length, user input should never be trusted
+			Units[i].cfg.isEnabled = ESPUI.getControl(Units[i].IDs.idEnabled)->value == "1";
+			strncpy(Units[i].cfg.name, ESPUI.getControl(Units[i].IDs.idName)->value.c_str(), sizeof(Units[i].cfg.name));
+			Units[i].cfg.name[sizeof(Units[i].cfg.name) - 1] = 0;
+			strncpy(Units[i].cfg.addr, ESPUI.getControl(Units[i].IDs.idAddr)->value.c_str(), sizeof(Units[i].cfg.addr));
+			Units[i].cfg.addr[sizeof(Units[i].cfg.addr) - 1] = 0;
+			Units[i].cfg.minThr = atoi(ESPUI.getControl(Units[i].IDs.idMin)->value.c_str());
+			Units[i].cfg.maxThr = atoi(ESPUI.getControl(Units[i].IDs.idMax)->value.c_str());
 		}
-		EEPROM.write(i + 32, '\0');
-		EEPROM.end();
+
+		generalCfg.pollInterval = atoi(ESPUI.getControl(generalCfgIDs.idPollInterval)->value.c_str());
+		if (generalCfg.pollInterval > 0 && generalCfg.pollInterval <= 32000)
+		{
+			HumSensors::setPollInterval(generalCfg.pollInterval);
+		}
+		saveSystemCfg();
+	}
+}
+
+void resetCfgCallback(Control *sender, int type)
+{
+	if (type == B_UP)
+	{
+		refreshSettings();
+	}
+}
+
+void settingsTabCallback(Control *sender, int type)
+{
+	if (type == B_UP)
+	{
+		refreshSettings();
+	}
+}
+
+void refreshSensorsListCallback(Control *sender, int type)
+{
+	if (type == B_UP)
+	{
+		ESPUI.updateControlValue(generalCfgIDs.idFoundSensors, getFoundSensorsList());
 	}
 }
 
@@ -389,6 +392,6 @@ void textCallback(Control *sender, int type)
 	// This callback is needed to handle the changed values, even though it doesn't do anything itself.
 }
 
-void enabledCallback(Control *sender, int type) {
-	updates = (sender->value.toInt() > 0);
+void enabledCallback(Control *sender, int type)
+{
 }
