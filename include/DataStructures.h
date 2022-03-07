@@ -47,4 +47,8 @@ struct GeneralCfgIDs
 	int16_t idSave = 0;
 	int16_t idReset = 0;
 	int16_t idRefresh = 0;
+	int16_t idSSID;
+	int16_t idPass;
 };
+
+extern std::vector<UnitData> Units;
