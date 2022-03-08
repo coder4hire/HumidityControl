@@ -1,4 +1,5 @@
 #pragma once
+#include "SmartPlugInterface.h"
 
 #define MAX_UNITS_NUM 3
 
@@ -9,7 +10,8 @@ struct UnitConfig
 	char addr[32] = "";
 	int minThr = 0;
 	int maxThr = 0;
-	char plugAddr[128];
+	char plugAddr[128] = "";
+	char plugPwd[32] = "";
 };
 
 struct GeneralConfig
@@ -31,12 +33,14 @@ struct UnitIDs
 	int16_t idMin = 0;
 	int16_t idMax = 0;
 	int16_t idPlugAddr = 0;
+	int16_t idPlugPwd = 0;
 };
 
 struct UnitData
 {
 	UnitIDs IDs;
 	UnitConfig cfg;
+	SmartPlugInterface plug;	
 	char label[32];
 };
 

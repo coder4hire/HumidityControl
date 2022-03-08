@@ -64,10 +64,18 @@ void loop()
 
 	// Send periodic updates if switcher is turned on
 	auto now = millis();
-	if (now > lastTime + 50000 || now < lastTime)
+	if (now > lastTime + 5000 || now < lastTime)
 	{
 		//		HumSensors::refreshData();
 		auto readings = HumSensors::getReadings();
+
+		for(auto& unit : Units)
+		{
+			if(!unit.plug.refreshReadings())
+			{
+				Serial.println("Error getting data from plug "+unit.plug.getAddr());
+			}
+		}
 		updateReadingsGUI(readings);
 
 		//		SmartPlugInterface plug(TASMOTA_PARAMS);

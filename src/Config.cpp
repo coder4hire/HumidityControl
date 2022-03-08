@@ -27,6 +27,7 @@ void saveSystemCfg()
     {
         const auto &cfg = Units[i].cfg;
         prefs.putBytes((String("unit")+String(i)).c_str(),(void*)&cfg, sizeof(UnitConfig));
+        Units[i].plug.setCredentials(cfg.plugAddr,cfg.plugPwd);        
     }
     prefs.end();    
 
@@ -51,6 +52,7 @@ void loadSystemCfg()
         cfg.name[sizeof(cfg.name) - 1] = 0;
         cfg.addr[sizeof(cfg.addr) - 1] = 0;
         cfg.plugAddr[sizeof(cfg.plugAddr) - 1] = 0;
+        cfg.plugPwd[sizeof(cfg.plugPwd) - 1] = 0;
 
         if (cfg.minThr < 0 || cfg.minThr > 100)
         {
@@ -60,6 +62,8 @@ void loadSystemCfg()
         {
             cfg.maxThr = 0;
         }
+
+        Units[i].plug.setCredentials(cfg.plugAddr,cfg.plugPwd);
     }
     prefs.end();
 }

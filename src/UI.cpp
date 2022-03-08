@@ -4,7 +4,6 @@
 
 GeneralCfgIDs generalCfgIDs;
 
-
 String ledStyle = "<span style='border-radius:50%;width:15px;height:15px;display:inline-block;border:1px;border-style:solid;margin-right:5px;color:dimgray;background:";
 String divStyle = "<div style='width:7em;display:inline-block'>";
 #define LED_LABEL(color, text) ledStyle + #color "'/>" + divStyle + #text "</span>"
@@ -59,7 +58,11 @@ void setUpUI()
 
         ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Smart Plug : ", None, root), clearLabelStyle);
         Units[i].IDs.idPlugAddr = ESPUI.addControl(Text, "", Units[i].cfg.plugAddr, None, root, textCallback);
-        ESPUI.addControl(Max, "", "127", None, Units[i].IDs.idAddr);
+        ESPUI.addControl(Max, "", "127", None, Units[i].IDs.idPlugAddr);
+
+        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Plug Pwd: ", None, root), clearLabelStyle);
+        Units[i].IDs.idPlugPwd = ESPUI.addControl(Text, "", Units[i].cfg.plugPwd, None, root, textCallback);
+        ESPUI.addControl(Max, "", "31", None, Units[i].IDs.idPlugPwd);
     }
 
     generalCfgIDs.idPollInterval = ESPUI.addControl(Number, "Poll Interval", String(generalCfg.pollInterval), None, settingsTab, textCallback);
@@ -111,6 +114,8 @@ void refreshSettings()
         ESPUI.updateControlValue(Units[i].IDs.idAddr, Units[i].cfg.addr);
         ESPUI.updateControlValue(Units[i].IDs.idMin, String(Units[i].cfg.minThr));
         ESPUI.updateControlValue(Units[i].IDs.idMax, String(Units[i].cfg.maxThr));
+        ESPUI.updateControlValue(Units[i].IDs.idPlugAddr, Units[i].cfg.plugAddr);
+        ESPUI.updateControlValue(Units[i].IDs.idPlugPwd, Units[i].cfg.plugPwd);
     }
     ESPUI.updateControlValue(generalCfgIDs.idPollInterval, String(generalCfg.pollInterval));
 }
@@ -125,12 +130,40 @@ void updateReadingsGUI(const std::map<std::string, SensorData> &readings)
             const auto &data = readings.at(Units[i].cfg.addr);
             ESPUI.updateLabel(Units[i].IDs.idLabel, String((int)data.humidity) + "%    " + String(data.temp, 1) + "&#176C    (" +
                                                         String(data.voltage) + " V)");
-            ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(green, Spraying));
-            ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(blue, Water));
         }
         catch (...)
         {
             ESPUI.updateLabel(Units[i].IDs.idLabel, "- NO DATA -");
+        }
+
+        try
+        {
+            const auto plugReadings = Units[i].plug.getReadings();            
+            if(plugReadings.isEmpty())
+            {
+                throw std::runtime_error("no data");
+            }
+
+            if (plugReadings.isOn())
+            {
+                ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(green, Spraying));
+            }
+            else
+            {
+                ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(black, Off));
+            }
+
+            if (!plugReadings.isOn() && Units[i].plug.isTurnedOn())
+            {
+                ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(red, No Water));
+            }
+            else
+            {
+                ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(blue, Water));
+            }
+        }
+        catch (...)
+        {
             ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(gray, Unknown));
             ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(gray, Unknown));
         }
@@ -170,6 +203,10 @@ void saveCfgCallback(Control *sender, int type)
             Units[i].cfg.addr[sizeof(Units[i].cfg.addr) - 1] = 0;
             Units[i].cfg.minThr = atoi(ESPUI.getControl(Units[i].IDs.idMin)->value.c_str());
             Units[i].cfg.maxThr = atoi(ESPUI.getControl(Units[i].IDs.idMax)->value.c_str());
+            strncpy(Units[i].cfg.plugAddr, ESPUI.getControl(Units[i].IDs.idPlugAddr)->value.c_str(), sizeof(Units[i].cfg.plugAddr));
+            Units[i].cfg.plugAddr[sizeof(Units[i].cfg.plugAddr) - 1] = 0;
+            strncpy(Units[i].cfg.plugPwd, ESPUI.getControl(Units[i].IDs.idPlugPwd)->value.c_str(), sizeof(Units[i].cfg.plugPwd));
+            Units[i].cfg.plugPwd[sizeof(Units[i].cfg.plugPwd) - 1] = 0;
         }
 
         generalCfg.pollInterval = atoi(ESPUI.getControl(generalCfgIDs.idPollInterval)->value.c_str());

@@ -2,54 +2,63 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-SmartPlugReadings SmartPlugInterface::getReadings()
+bool SmartPlugInterface::refreshReadings()
 {
-    SmartPlugReadings retVal;
+    std::lock_guard<std::mutex> lock(mtx);
     String payload;
     StaticJsonDocument<512> doc;
-    if(sendGetRequest("cmnd=Status%208",payload))
+    if (sendGetRequest("cmnd=Status%208", payload))
     {
-        if(deserializeJson(doc, payload)==DeserializationError::Ok)
+        if (deserializeJson(doc, payload) == DeserializationError::Ok)
         {
-            JsonObject energyObj = doc["StatusSNS"]["ENERGY"];            
-            retVal.power = energyObj["Power"];
-            retVal.voltage = energyObj["Voltage"];
-        }
-        else
-        {
-            //Serial.printf("Plug JSON parsing error, payload:\n%s\n",payload.c_str());
-            Serial.printf("Plug JSON parsing error\n");
-        }
-    }
-    return retVal;
-}
-
-bool SmartPlugInterface::set(bool turnOn)
-{
-    String payload;
-    if(sendGetRequest(String("cmnd=Power%20") + (turnOn ? "1" : "0"),payload))
-    {
-        if ((turnOn && payload=="{\"POWER\":\"ON\"}") ||
-            (!turnOn && payload=="{\"POWER\":\"OFF\"}"))
-        {
+            JsonObject energyObj = doc["StatusSNS"]["ENERGY"];
+            lastReadings.power = energyObj["Power"];
+            lastReadings.voltage = energyObj["Voltage"];
             return true;
         }
         else
         {
-            Serial.printf("Invalid payload: %s\n",payload.c_str());
+            // Serial.printf("Plug JSON parsing error, payload:\n%s\n",payload.c_str());
+            Serial.printf("Plug JSON parsing error\n");
         }
     }
     return false;
 }
 
-bool SmartPlugInterface::sendGetRequest(String request, String& payload)
+bool SmartPlugInterface::set(bool turnOn)
 {
-    bool retVal=false;
+    std::lock_guard<std::mutex> lock(mtx);    
+    String payload;
+    if (sendGetRequest(String("cmnd=Power%20") + (turnOn ? "1" : "0"), payload))
+    {
+        if ((turnOn && payload == "{\"POWER\":\"ON\"}") ||
+            (!turnOn && payload == "{\"POWER\":\"OFF\"}"))
+        {
+            isTurnedOnVal = turnOn;
+            return true;
+        }
+        else
+        {
+            Serial.printf("Invalid payload: %s\n", payload.c_str());
+        }
+    }
+    return false;
+}
+
+bool SmartPlugInterface::sendGetRequest(String request, String &payload)
+{
+    bool retVal = false;
+    if(addr=="")
+    {
+        return false;
+    }
+
     if (WiFi.status() == WL_CONNECTED)
     {
         HTTPClient http;
 
-        String serverPath = "http://"+addr + "/cm?user=admin&password="+pass+"&"+request;
+        String serverPath = String("http://") + addr + "/cm?" +
+                            (pass != "" ? "user=admin&password=" + pass + "&" : "") + request;
 
         // Your Domain name with URL path or IP address with path
         http.begin(serverPath.c_str());
@@ -59,12 +68,12 @@ bool SmartPlugInterface::sendGetRequest(String request, String& payload)
 
         if (httpResponseCode != 200)
         {
-            Serial.printf("Plug HTTP Error code: %d\n",httpResponseCode);
+            Serial.printf("Plug HTTP Error code: %d\n", httpResponseCode);
         }
         else
         {
             payload = http.getString();
-            retVal=true;
+            retVal = true;
         }
         // Free resources
         http.end();
