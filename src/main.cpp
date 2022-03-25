@@ -35,6 +35,53 @@ bool isWifiClient = false;
 
 std::vector<UnitData> Units(MAX_UNITS_NUM);
 
+bool checkRules()
+{
+	const auto &readings = HumSensors::getReadings();
+	int retVal = 0;
+	for (auto &unit : Units)
+	{
+		try
+		{
+			float hum = readings.at(unit.cfg.addr).humidity;
+			if (unit.cfg.isEnabled && hum > 0)
+			{
+				if (unit.cfg.minThr < unit.cfg.maxThr)
+				{
+					if (hum >= unit.cfg.maxThr)
+					{
+						retVal += unit.plug.set(false);
+					}
+					else if (hum <= unit.cfg.minThr)
+					{
+						retVal += unit.plug.set(true);
+					}
+				}
+				else
+				{
+					unit.plug.set(false);
+				}
+			}
+		}
+		catch (...)
+		{
+		}
+	}
+	return retVal != 0;
+}
+
+void refreshPlugsData()
+{
+	for (auto &unit : Units)
+	{
+		if (*unit.cfg.plugAddr && !unit.plug.refreshReadings())
+		{
+			LOGERR("Can't get data from plug %s", unit.plug.getAddr().c_str());
+		}
+//		LOG("volt:%d",unit.plug.getReadings().voltage);
+	}
+}
+
 void setup()
 {
 	Serial.begin(115200);
@@ -66,22 +113,19 @@ void loop()
 	auto now = millis();
 	if (now > lastTime + 5000 || now < lastTime)
 	{
-		//		HumSensors::refreshData();
-		auto readings = HumSensors::getReadings();
-
-		for(auto& unit : Units)
+		const auto &readings = HumSensors::getReadings();
+		refreshPlugsData();
+		if (checkRules())
 		{
-			if(!unit.plug.refreshReadings())
-			{
-				Serial.println("Error getting data from plug "+unit.plug.getAddr());
-			}
+			delay(1000);
+			refreshPlugsData();
 		}
 		updateReadingsGUI(readings);
 
-		//		SmartPlugInterface plug(TASMOTA_PARAMS);
-		//		SmartPlugReadings plugData = plug.getReadings();
-		//		Serial.printf("Power=%d; Voltage=%d\n", plugData.power, plugData.voltage);
-
+		if (WiFi.status() != WL_CONNECTED)
+		{
+			connectWifi();
+		}
 		lastTime = now;
 	}
 
@@ -90,10 +134,10 @@ void loop()
 	{
 		switch (Serial.read())
 		{
-		case 'w': // Print IP details
+		case 'i': // Print IP details
 			Serial.println(WiFi.localIP());
 			break;
-		case 'W': // Reconnect wifi
+		case 'w': // Reconnect wifi
 			connectWifi();
 			break;
 		default:
@@ -102,12 +146,7 @@ void loop()
 		}
 	}
 
-
-	if(WiFi.status() != WL_CONNECTED)
-	{
-		connectWifi();
-	}
-	delay(5000);
+	delay(2000);
 }
 
 // Utilities
@@ -117,7 +156,7 @@ void connectWifi()
 	int connect_timeout;
 
 	WiFi.setHostname(HOSTNAME);
-	Serial.println("Begin wifi...");
+	LOG("Begin wifi...");
 
 	// Load credentials from EEPROM
 	yield();
@@ -133,21 +172,21 @@ void connectWifi()
 		Serial.print(".");
 		connect_timeout--;
 	}
+	Serial.print("\n");
 
 	if (WiFi.status() == WL_CONNECTED)
 	{
-		Serial.println(WiFi.localIP());
-		Serial.println("Wifi started");
+		LOG("Wifi (client) started, IP: %s", WiFi.localIP().toString().c_str());
 
 		if (!MDNS.begin(HOSTNAME))
 		{
-			Serial.println("Error setting up MDNS responder!");
+			LOGERR("Error setting up MDNS responder!");
 		}
-		isWifiClient=true;
+		isWifiClient = true;
 	}
-	else if(!isWifiClient)
+	else if (!isWifiClient)
 	{
-		Serial.println("\nCreating access point...");
+		LOGERR("Cannot create client connection, creating access point...");
 		WiFi.mode(WIFI_AP);
 		WiFi.softAPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
 		WiFi.softAP(HOSTNAME);
@@ -159,6 +198,6 @@ void connectWifi()
 			Serial.print(",");
 			connect_timeout--;
 		} while (connect_timeout);
+		Serial.print("\n");
 	}
 }
-

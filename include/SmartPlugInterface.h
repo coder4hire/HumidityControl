@@ -9,6 +9,7 @@ struct SmartPlugReadings
 
     bool isEmpty() const { return power == -1; }
     bool isOn() const { return voltage > 10; }
+    bool isLoaded() const { return power > 3; }
 };
 
 class SmartPlugInterface
@@ -27,7 +28,7 @@ public:
         return lastReadings;
     }
     bool refreshReadings();
-    bool set(bool turnOn);
+    bool set(bool turnOn, bool force = false);
     bool isTurnedOn()
     {
         std::lock_guard<std::mutex> lock(mtx);

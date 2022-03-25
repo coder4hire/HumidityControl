@@ -1,6 +1,7 @@
 #include "SmartPlugInterface.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <DataStructures.h>
 
 bool SmartPlugInterface::refreshReadings()
 {
@@ -14,32 +15,38 @@ bool SmartPlugInterface::refreshReadings()
             JsonObject energyObj = doc["StatusSNS"]["ENERGY"];
             lastReadings.power = energyObj["Power"];
             lastReadings.voltage = energyObj["Voltage"];
+            if (lastReadings.isOn() != isTurnedOnVal)
+            {
+                isTurnedOnVal = lastReadings.isOn();
+            }
             return true;
         }
         else
         {
-            // Serial.printf("Plug JSON parsing error, payload:\n%s\n",payload.c_str());
-            Serial.printf("Plug JSON parsing error\n");
+            LOGERR("Plug JSON parsing error");
         }
     }
     return false;
 }
 
-bool SmartPlugInterface::set(bool turnOn)
+bool SmartPlugInterface::set(bool turnOn, bool force)
 {
-    std::lock_guard<std::mutex> lock(mtx);    
+    std::lock_guard<std::mutex> lock(mtx);
     String payload;
-    if (sendGetRequest(String("cmnd=Power%20") + (turnOn ? "1" : "0"), payload))
+    if (force || turnOn != isTurnedOnVal)
     {
-        if ((turnOn && payload == "{\"POWER\":\"ON\"}") ||
-            (!turnOn && payload == "{\"POWER\":\"OFF\"}"))
+        if (sendGetRequest(String("cmnd=Power%20") + (turnOn ? "1" : "0"), payload))
         {
-            isTurnedOnVal = turnOn;
-            return true;
-        }
-        else
-        {
-            Serial.printf("Invalid payload: %s\n", payload.c_str());
+            if ((turnOn && payload == "{\"POWER\":\"ON\"}") ||
+                (!turnOn && payload == "{\"POWER\":\"OFF\"}"))
+            {
+                isTurnedOnVal = turnOn;
+                return true;
+            }
+            else
+            {
+                LOGERR("Invalid payload: %s", payload.c_str());
+            }
         }
     }
     return false;
@@ -48,7 +55,7 @@ bool SmartPlugInterface::set(bool turnOn)
 bool SmartPlugInterface::sendGetRequest(String request, String &payload)
 {
     bool retVal = false;
-    if(addr=="")
+    if (addr == "")
     {
         return false;
     }
@@ -56,6 +63,7 @@ bool SmartPlugInterface::sendGetRequest(String request, String &payload)
     if (WiFi.status() == WL_CONNECTED)
     {
         HTTPClient http;
+        http.setTimeout(5000);
 
         String serverPath = String("http://") + addr + "/cm?" +
                             (pass != "" ? "user=admin&password=" + pass + "&" : "") + request;
@@ -68,10 +76,11 @@ bool SmartPlugInterface::sendGetRequest(String request, String &payload)
 
         if (httpResponseCode != 200)
         {
-            Serial.printf("Plug HTTP Error code: %d\n", httpResponseCode);
+            LOGERR("Plug HTTP Error code: %d", httpResponseCode);
         }
         else
         {
+            LOG("Got response from plug: %s", addr.c_str());
             payload = http.getString();
             retVal = true;
         }
@@ -80,7 +89,7 @@ bool SmartPlugInterface::sendGetRequest(String request, String &payload)
     }
     else
     {
-        Serial.println("WiFi disconnected");
+        LOGERR("sendGetReuest: WiFi disconnected");
     }
     return retVal;
 }

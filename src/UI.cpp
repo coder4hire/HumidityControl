@@ -95,14 +95,6 @@ void setUpUI()
 
 void generalCallback(Control *sender, int type)
 {
-    Serial.print("CB: id(");
-    Serial.print(sender->id);
-    Serial.print(") Type(");
-    Serial.print(type);
-    Serial.print(") '");
-    Serial.print(sender->label);
-    Serial.print("' = ");
-    Serial.println(sender->value);
 }
 
 void refreshSettings()
@@ -138,8 +130,8 @@ void updateReadingsGUI(const std::map<std::string, SensorData> &readings)
 
         try
         {
-            const auto plugReadings = Units[i].plug.getReadings();            
-            if(plugReadings.isEmpty())
+            const auto plugReadings = Units[i].plug.getReadings();
+            if (plugReadings.isEmpty())
             {
                 throw std::runtime_error("no data");
             }
@@ -147,19 +139,12 @@ void updateReadingsGUI(const std::map<std::string, SensorData> &readings)
             if (plugReadings.isOn())
             {
                 ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(green, Spraying));
+                ESPUI.updateLabel(Units[i].IDs.idWater, plugReadings.isLoaded() ? LED_LABEL(blue, Water) : LED_LABEL(red, No Water));
             }
             else
             {
                 ESPUI.updateLabel(Units[i].IDs.idOn, LED_LABEL(black, Off));
-            }
-
-            if (!plugReadings.isOn() && Units[i].plug.isTurnedOn())
-            {
-                ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(red, No Water));
-            }
-            else
-            {
-                ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(blue, Water));
+                ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(gray, ---));
             }
         }
         catch (...)
@@ -185,7 +170,6 @@ void enterWifiDetailsCallback(Control *sender, int type)
 {
     if (type == B_UP)
     {
-        Serial.println("Saving credentials to EPROM...");
         saveWifiCfg(ESPUI.getControl(generalCfgIDs.idSSID)->value, ESPUI.getControl(generalCfgIDs.idPass)->value);
     }
 }

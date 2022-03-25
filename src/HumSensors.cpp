@@ -32,7 +32,6 @@ void HumSensors::refreshClientsList()
 {
   NimBLEScanResults foundDevices = pBLEScan->start(SCAN_TIME);
   int count = foundDevices.getCount();
-  Serial.printf("+ Found device count : %d\n", count);
   for (int i = 0; i < count; i++)
   {
     NimBLEAdvertisedDevice b = foundDevices.getDevice(i);
@@ -41,9 +40,7 @@ void HumSensors::refreshClientsList()
       NimBLEAddress addr = b.getAddress();
       if (!clients.count(addr))
       {
-        Serial.printf("+ Addr : %s\n", addr.toString().c_str());
         clients[addr] = std::unique_ptr<BLEClientExt>(new BLEClientExt(BLEAddress(addr)));
-        Serial.printf("+ client is added \n");
       }
     }
   }
@@ -54,7 +51,6 @@ void HumSensors::refreshClientsList()
     if (!std::any_of(foundDevices.begin(), foundDevices.end(), [&curAddr](NimBLEAdvertisedDevice *dev)
                      { return dev->getAddress().equals(curAddr); }))
     {
-      Serial.printf("* Remove offline address : %s\n", curAddr.c_str());
       it = clients.erase(it);
     }
   }
@@ -81,19 +77,12 @@ void HumSensors::refreshData()
   {
     pair.second->disconnect();
   }
-
-  // Serial.println("********* Results ************");
-  // for (const auto &d : sensorsData)
-  // {
-  //   Serial.printf("    temp = %.1f C ; humidity = %.1f %% ; voltage = %.3f V\n", d.second.temp, d.second.humi, d.second.voltage);
-  // }
-  // Serial.println("");
 }
 
 /* Task to be created. */
 void HumSensors::vTaskCode(void *pvParameters)
 {
-  Serial.println("*************** Task started *******************");
+  LOG("*** Task started ***");
   if(!pollInterval)
   {
     pollInterval=30; // Just to avoid possible problems

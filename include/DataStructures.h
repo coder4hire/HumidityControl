@@ -1,6 +1,16 @@
 #pragma once
 #include "SmartPlugInterface.h"
 
+#define LOG_INFO
+
+#ifdef LOG_INFO
+#define LOG(x, ...) Serial.printf(x "\n", ##__VA_ARGS__)
+#else
+#define LOG(x, ...)
+#endif
+
+#define LOGERR(x, ...) Serial.printf("ERR: " x "\n", ##__VA_ARGS__)
+
 #define MAX_UNITS_NUM 3
 
 struct UnitConfig
@@ -40,7 +50,7 @@ struct UnitData
 {
 	UnitIDs IDs;
 	UnitConfig cfg;
-	SmartPlugInterface plug;	
+	SmartPlugInterface plug;
 	char label[32];
 };
 

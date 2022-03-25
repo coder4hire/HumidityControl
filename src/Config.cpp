@@ -31,7 +31,7 @@ void saveSystemCfg()
     }
     prefs.end();    
 
-    Serial.println("System config is saved");    
+    LOG("System config is saved");    
 }
 
 void loadSystemCfg()

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <mutex>
 #include <atomic>
+#include <DataStructures.h>
 
 #define SCAN_TIME 10
 
@@ -27,7 +28,7 @@ public:
     static std::map<std::string, SensorData> getReadings();
     static void setReadings(NimBLEAddress addr, SensorData data);
     static void startBLETask(void);
-    static void setPollInterval(int value){pollInterval=value;}
+    static void setPollInterval(int value) { pollInterval = value; }
 
 protected:
     static NimBLEScan *pBLEScan;
@@ -39,16 +40,14 @@ protected:
     static void vTaskCode(void *pvParameters);
 };
 
-
 class BLEClientExt
 {
 public:
     BLEClientExt(NimBLEAddress htSensorAddress) : peerAddress(htSensorAddress),
-        serviceUUID("ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6"),
-        charUUID("ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6")
+                                                  serviceUUID("ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6"),
+                                                  charUUID("ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6")
     {
         pClient = NimBLEDevice::createClient();
-        pClient->setClientCallbacks(new ClientCBs());
     }
 
     BLEClientExt(const BLEClientExt &) = delete;
@@ -65,10 +64,11 @@ public:
 
     bool connectAndRegisterNotifications()
     {
-        if (pClient->connect(peerAddress,false))
+        if (pClient->connect(peerAddress, false))
         {
             NimBLERemoteService *pRemoteService = pClient->getService(serviceUUID);
-            if (pRemoteService == nullptr) {
+            if (pRemoteService == nullptr)
+            {
                 // Perform full service refresh
                 pClient->getServices(true);
                 pRemoteService = pClient->getService(serviceUUID);
@@ -76,8 +76,7 @@ public:
 
             if (pRemoteService == nullptr)
             {
-                Serial.print(" - Failed to find our service UUID: ");
-                Serial.println(serviceUUID.toString().c_str());
+                LOGERR("Failed to find our service UUID: %s", serviceUUID.toString().c_str());
                 disconnect();
                 return false;
             }
@@ -86,12 +85,11 @@ public:
             NimBLERemoteCharacteristic *pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
             if (pRemoteCharacteristic == nullptr)
             {
-                Serial.print(" - Failed to find our characteristic UUID: ");
-                Serial.println(charUUID.toString().c_str());
+                LOGERR("Failed to find our characteristic UUID: %s", charUUID.toString().c_str());
                 disconnect();
                 return false;
             }
-            pRemoteCharacteristic->subscribe(true,notifyCallback);
+            pRemoteCharacteristic->subscribe(true, notifyCallback);
             return true;
         }
         return false;
@@ -99,7 +97,7 @@ public:
 
     void disconnect()
     {
-        if(isConnected())
+        if (isConnected())
         {
             pClient->disconnect();
         }
@@ -115,24 +113,6 @@ protected:
     static std::unique_ptr<BLEClientExt> pInst;
     NimBLEClient *pClient;
 
-    class ClientCBs : public NimBLEClientCallbacks
-    {
-    public:
-        ~ClientCBs()
-        {
-            Serial.println("Callbacks destroyed");
-        }
-        void onConnect(NimBLEClient *pclient)
-        {
-            Serial.printf(" * Connected %s\n", pclient->getPeerAddress().toString().c_str());
-        }
-
-        void onDisconnect(NimBLEClient *pclient)
-        {
-            Serial.printf(" * Disconnected %s\n", pclient->getPeerAddress().toString().c_str());
-        }
-    };
-
     static void notifyCallback(
         NimBLERemoteCharacteristic *pBLERemoteCharacteristic,
         uint8_t *pData,
@@ -140,16 +120,17 @@ protected:
         bool isNotify)
     {
         NimBLEClient *pClient = pBLERemoteCharacteristic->getRemoteService()->getClient();
-        Serial.printf("*** callback for client: %s\n", ((std::string)pClient->getPeerAddress()).c_str());
+
         SensorData dt;
-        if(length>=5)
+        if (length >= 5)
         {
             dt.temp = (pData[0] | (pData[1] << 8)) * 0.01; // little endian
             dt.humidity = pData[2];
             dt.voltage = (pData[3] | (pData[4] << 8)) * 0.001; // little endian
+            LOG("Sensor (%s) data is refreshed", ((std::string)pClient->getPeerAddress()).c_str());
         }
         dt.timestamp = std::chrono::system_clock::now();
-        HumSensors::setReadings(pClient->getPeerAddress(),dt);
+        HumSensors::setReadings(pClient->getPeerAddress(), dt);
         pClient->disconnect();
     }
 
