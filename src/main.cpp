@@ -25,7 +25,6 @@
 #include "DataStructures.h"
 
 // Settings
-#define SLOW_BOOT 0
 #define HOSTNAME "HUMCTL"
 
 // Function Prototypes
@@ -78,7 +77,6 @@ void refreshPlugsData()
 		{
 			LOGERR("Can't get data from plug %s", unit.plug.getAddr().c_str());
 		}
-//		LOG("volt:%d",unit.plug.getReadings().voltage);
 	}
 }
 
@@ -90,10 +88,11 @@ void setup()
 	// HumSensors::init();
 	Serial.println("sensors init done");
 
-	while (!Serial)
-		;
-	if (SLOW_BOOT)
-		delay(5000); // Delay booting to give time to connect a serial monitor
+	for (int i = 0; !Serial && i < 10; i++)
+	{
+		delay(500);
+	}
+	
 	connectWifi();
 	WiFi.setSleep(true); // Sleep should be enabled for Bluetooth
 
