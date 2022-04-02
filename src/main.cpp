@@ -17,6 +17,7 @@
 
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <esp_task_wdt.h>
 
 #include "HumSensors.h"
 #include "SmartPlugInterface.h"
@@ -26,6 +27,8 @@
 
 // Settings
 #define HOSTNAME "HUMCTL"
+#define WDT_TIMEOUT 30
+
 
 // Function Prototypes
 void connectWifi();
@@ -102,6 +105,9 @@ void setup()
 
 	setUpUI();
 	HumSensors::startBLETask();
+
+  	esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+  	esp_task_wdt_add(NULL); //add current thread to WDT watch	
 }
 
 void loop()
@@ -145,6 +151,7 @@ void loop()
 		}
 	}
 
+	esp_task_wdt_reset();
 	delay(2000);
 }
 

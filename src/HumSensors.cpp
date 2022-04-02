@@ -89,9 +89,9 @@ void HumSensors::vTaskCode(void *pvParameters)
   }
 
   HumSensors::init();
-  HumSensors::refreshClientsList();
-  for (;;)
+    for (;;)
   {
+    HumSensors::refreshClientsList();    
     HumSensors::refreshData();
     delay(pollInterval*1000);
   }
