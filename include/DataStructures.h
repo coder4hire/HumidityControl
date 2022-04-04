@@ -22,6 +22,37 @@ struct UnitConfig
 	int maxThr = 0;
 	char plugAddr[128] = "";
 	char plugPwd[32] = "";
+	unsigned int enStartTime = 0;
+	unsigned int enEndTime = 0;
+	
+	String getEnStartTime() 
+	{
+		char buf[20];
+		sprintf(buf,"%02d:%02d:%02d",enStartTime/3600,(enStartTime%3600)/60,enStartTime%60);
+		return String(buf);
+	}
+
+	String getEnEndTime() 
+	{
+		char buf[20];
+		sprintf(buf,"%02d:%02d:%02d",enEndTime/3600,(enEndTime%3600)/60,enEndTime%60);
+		return String(buf);
+	}
+
+	void setEnStartTime(String strTime) 
+	{
+		int h,m,s;
+		sscanf(strTime.c_str(),"%d:%d:%d",&h,&m,&s);
+		enStartTime=h*3600+m*60+s;		
+	}
+
+	void setEnEndTime(String strTime) 
+	{
+		int h,m,s;
+		sscanf(strTime.c_str(),"%d:%d:%d",&h,&m,&s);
+		enEndTime=h*3600+m*60+s;		
+	}
+
 };
 
 struct GeneralConfig
@@ -44,6 +75,8 @@ struct UnitIDs
 	int16_t idMax = 0;
 	int16_t idPlugAddr = 0;
 	int16_t idPlugPwd = 0;
+	int16_t idEnStartTime;
+	int16_t idEnEndTime;
 };
 
 struct UnitData

@@ -62,6 +62,14 @@ void loadSystemCfg()
         {
             cfg.maxThr = 0;
         }
+        if (cfg.enStartTime >= 24*3600)
+        {
+            cfg.enStartTime = 0;
+        }
+        if (cfg.enEndTime >= 24*3600)
+        {
+            cfg.enEndTime = 0;
+        }
 
         Units[i].plug.setCredentials(cfg.plugAddr,cfg.plugPwd);
     }

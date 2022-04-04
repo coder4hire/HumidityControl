@@ -46,15 +46,21 @@ void setUpUI()
         ESPUI.addControl(Max, "", "31", None, Units[i].IDs.idAddr);
         //	ESPUI.setElementStyle(Units[i].IDs.idAddr, ctrlStyle);
 
-        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Min : ", None, root), clearLabelStyle);
+        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Min Humidity : ", None, root), clearLabelStyle);
         Units[i].IDs.idMin = ESPUI.addControl(Number, "", String(Units[i].cfg.minThr), None, root, generalCallback);
         ESPUI.addControl(Min, "", "0", None, Units[i].IDs.idMin);
         ESPUI.addControl(Max, "", "100", None, Units[i].IDs.idMin);
 
-        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Max : ", None, root), clearLabelStyle);
+        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Max Humidity : ", None, root), clearLabelStyle);
         Units[i].IDs.idMax = ESPUI.addControl(Number, "", String(Units[i].cfg.maxThr), None, root, generalCallback);
         ESPUI.addControl(Min, "", "0", None, Units[i].IDs.idMax);
         ESPUI.addControl(Max, "", "100", None, Units[i].IDs.idMax);
+
+        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enabled Time Start : ", None, root), clearLabelStyle);
+        Units[i].IDs.idEnStartTime = ESPUI.addControl(Text, "", String(Units[i].cfg.getEnStartTime()), None, root, generalCallback);
+
+        ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enabled Time End : ", None, root), clearLabelStyle);
+        Units[i].IDs.idEnEndTime = ESPUI.addControl(Text, "", String(Units[i].cfg.getEnStartTime()), None, root, generalCallback);
 
         ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Smart Plug : ", None, root), clearLabelStyle);
         Units[i].IDs.idPlugAddr = ESPUI.addControl(Text, "", Units[i].cfg.plugAddr, None, root, textCallback);
@@ -69,7 +75,7 @@ void setUpUI()
     ESPUI.addControl(Min, "", "10", None, generalCfgIDs.idPollInterval);
     ESPUI.addControl(Max, "", "32000", None, generalCfgIDs.idPollInterval);
 
-    generalCfgIDs.idSave = ESPUI.addControl(Button, "Save /Reset", "Save", Peterriver, settingsTab, saveCfgCallback);
+    generalCfgIDs.idSave = ESPUI.addControl(Button, "Save / Reset", "Save", Peterriver, settingsTab, saveCfgCallback);
     generalCfgIDs.idReset = ESPUI.addControl(Button, "", "Reset", Peterriver, generalCfgIDs.idSave, resetCfgCallback);
 
     ESPUI.addControl(Separator, "Found Sensors", "", None, settingsTab);
@@ -106,6 +112,8 @@ void refreshSettings()
         ESPUI.updateControlValue(Units[i].IDs.idAddr, Units[i].cfg.addr);
         ESPUI.updateControlValue(Units[i].IDs.idMin, String(Units[i].cfg.minThr));
         ESPUI.updateControlValue(Units[i].IDs.idMax, String(Units[i].cfg.maxThr));
+        ESPUI.updateControlValue(Units[i].IDs.idEnStartTime, String(Units[i].cfg.getEnStartTime()));
+        ESPUI.updateControlValue(Units[i].IDs.idEnEndTime, String(Units[i].cfg.getEnEndTime()));
         ESPUI.updateControlValue(Units[i].IDs.idPlugAddr, Units[i].cfg.plugAddr);
         ESPUI.updateControlValue(Units[i].IDs.idPlugPwd, Units[i].cfg.plugPwd);
     }
@@ -187,6 +195,8 @@ void saveCfgCallback(Control *sender, int type)
             Units[i].cfg.addr[sizeof(Units[i].cfg.addr) - 1] = 0;
             Units[i].cfg.minThr = atoi(ESPUI.getControl(Units[i].IDs.idMin)->value.c_str());
             Units[i].cfg.maxThr = atoi(ESPUI.getControl(Units[i].IDs.idMax)->value.c_str());
+            Units[i].cfg.setEnStartTime(ESPUI.getControl(Units[i].IDs.idEnStartTime)->value);
+            Units[i].cfg.setEnEndTime(ESPUI.getControl(Units[i].IDs.idEnEndTime)->value);
             strncpy(Units[i].cfg.plugAddr, ESPUI.getControl(Units[i].IDs.idPlugAddr)->value.c_str(), sizeof(Units[i].cfg.plugAddr));
             Units[i].cfg.plugAddr[sizeof(Units[i].cfg.plugAddr) - 1] = 0;
             strncpy(Units[i].cfg.plugPwd, ESPUI.getControl(Units[i].IDs.idPlugPwd)->value.c_str(), sizeof(Units[i].cfg.plugPwd));
