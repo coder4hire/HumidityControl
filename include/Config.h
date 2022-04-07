@@ -8,5 +8,5 @@ extern GeneralConfig generalCfg;
 
 void saveWifiCfg(String SSID, String pwd);
 void loadWifiCfg(String &SSID, String &pwd);
-void saveSystemCfg();
-void loadSystemCfg();
+bool saveSystemCfg();
+bool loadSystemCfg();

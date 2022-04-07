@@ -41,14 +41,14 @@ struct UnitConfig
 
 	void setEnStartTime(String strTime) 
 	{
-		int h,m,s;
+		int h=0,m=0,s=0;
 		sscanf(strTime.c_str(),"%d:%d:%d",&h,&m,&s);
 		enStartTime=h*3600+m*60+s;		
 	}
 
 	void setEnEndTime(String strTime) 
 	{
-		int h,m,s;
+		int h=0,m=0,s=0;
 		sscanf(strTime.c_str(),"%d:%d:%d",&h,&m,&s);
 		enEndTime=h*3600+m*60+s;		
 	}
@@ -58,6 +58,8 @@ struct UnitConfig
 struct GeneralConfig
 {
 	int pollInterval = 10;
+	int UTCOffset=0;
+	char NTPServer[128]="pool.ntp.org";
 };
 
 struct UnitIDs
@@ -93,9 +95,14 @@ struct GeneralCfgIDs
 	int16_t idFoundSensors = 0;
 	int16_t idSave = 0;
 	int16_t idReset = 0;
+	int16_t idSaveInfo = 0;
 	int16_t idRefresh = 0;
-	int16_t idSSID;
-	int16_t idPass;
+	int16_t idSSID=0;
+	int16_t idPass=0;
+	int16_t idUTCOffset=0;
+	int16_t idNTPServer=0;
+
+	int16_t idTime=0;
 };
 
 extern std::vector<UnitData> Units;

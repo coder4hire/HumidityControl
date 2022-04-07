@@ -24,11 +24,12 @@
 #include "UI.h"
 #include "Config.h"
 #include "DataStructures.h"
+//#include <chrono>
+#include <time.h>
 
 // Settings
 #define HOSTNAME "HUMCTL"
 #define WDT_TIMEOUT 30
-
 
 // Function Prototypes
 void connectWifi();
@@ -46,7 +47,14 @@ bool checkRules()
 		try
 		{
 			float hum = readings.at(unit.cfg.addr).humidity;
-			if (unit.cfg.isEnabled && hum > 0)
+			struct tm tmInfo;
+			int nowTime = getLocalTime(&tmInfo) ? tmInfo.tm_hour * 3600 + tmInfo.tm_min * 60 + tmInfo.tm_sec : -1;
+
+			bool doesFitIntoEnabledTime = unit.cfg.enStartTime == unit.cfg.enEndTime || (nowTime >= 0 &&
+				  ((unit.cfg.enStartTime < unit.cfg.enEndTime && nowTime >= unit.cfg.enStartTime && nowTime < unit.cfg.enEndTime) ||
+				   (unit.cfg.enStartTime > unit.cfg.enEndTime && (nowTime >= unit.cfg.enStartTime || nowTime < unit.cfg.enEndTime))));
+			
+			if (unit.cfg.isEnabled && hum > 0 && doesFitIntoEnabledTime)
 			{
 				if (unit.cfg.minThr < unit.cfg.maxThr)
 				{
@@ -63,6 +71,10 @@ bool checkRules()
 				{
 					unit.plug.set(false);
 				}
+			}
+			else
+			{
+				unit.plug.set(false);
 			}
 		}
 		catch (...)
@@ -95,7 +107,7 @@ void setup()
 	{
 		delay(500);
 	}
-	
+
 	connectWifi();
 	WiFi.setSleep(true); // Sleep should be enabled for Bluetooth
 
@@ -106,8 +118,11 @@ void setup()
 	setUpUI();
 	HumSensors::startBLETask();
 
-  	esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
-  	esp_task_wdt_add(NULL); //add current thread to WDT watch	
+	esp_task_wdt_init(WDT_TIMEOUT, true); // enable panic so ESP32 restarts
+	esp_task_wdt_add(NULL);				  // add current thread to WDT watch
+
+	// init and get the time
+	configTime(generalCfg.UTCOffset * 3600, 0, generalCfg.NTPServer);
 }
 
 void loop()

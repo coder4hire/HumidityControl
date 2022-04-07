@@ -8,6 +8,19 @@ String ledStyle = "<span style='border-radius:50%;width:15px;height:15px;display
 String divStyle = "<div style='width:7em;display:inline-block'>";
 #define LED_LABEL(color, text) ledStyle + #color "'/>" + divStyle + #text "</span>"
 
+
+String getLocalTimeString()
+{
+    struct tm tmInfo;
+    if(getLocalTime(&tmInfo))
+    {
+        char buf[32];
+        sprintf(buf,"%02d:%02d",tmInfo.tm_hour,tmInfo.tm_min);
+        return buf;
+    }
+    return "--:--";
+}
+
 void setUpUI()
 {
     // Turn off verbose debugging
@@ -22,6 +35,10 @@ void setUpUI()
         Units[i].IDs.idOn = ESPUI.addControl(Label, "", LED_LABEL(gray, Unknown), Turquoise, Units[i].IDs.idLabel, generalCallback);
         Units[i].IDs.idWater = ESPUI.addControl(Label, "", LED_LABEL(gray, Unknown), Turquoise, Units[i].IDs.idLabel, generalCallback);
     }
+
+    ESPUI.addControl(Separator, "Time", "", None, statusTab);
+
+    generalCfgIDs.idTime = ESPUI.addControl(Label, "Current Time", "---", Emerald, statusTab, generalCallback);
 
     auto settingsTab = ESPUI.addControl(Tab, "", "Settings", None, Control::noParent, settingsTabCallback);
     ESPUI.addControl(Separator, "Units Settings", "", None, settingsTab);
@@ -60,7 +77,7 @@ void setUpUI()
         Units[i].IDs.idEnStartTime = ESPUI.addControl(Text, "", String(Units[i].cfg.getEnStartTime()), None, root, generalCallback);
 
         ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Enabled Time End : ", None, root), clearLabelStyle);
-        Units[i].IDs.idEnEndTime = ESPUI.addControl(Text, "", String(Units[i].cfg.getEnStartTime()), None, root, generalCallback);
+        Units[i].IDs.idEnEndTime = ESPUI.addControl(Text, "", String(Units[i].cfg.getEnEndTime()), None, root, generalCallback);
 
         ESPUI.setElementStyle(ESPUI.addControl(Label, "", "Smart Plug : ", None, root), clearLabelStyle);
         Units[i].IDs.idPlugAddr = ESPUI.addControl(Text, "", Units[i].cfg.plugAddr, None, root, textCallback);
@@ -71,12 +88,24 @@ void setUpUI()
         ESPUI.addControl(Max, "", "31", None, Units[i].IDs.idPlugPwd);
     }
 
-    generalCfgIDs.idPollInterval = ESPUI.addControl(Number, "Poll Interval", String(generalCfg.pollInterval), None, settingsTab, textCallback);
+    uint16_t cfgGroup = ESPUI.addControl(Label, "General Config", "Poll Interval : ", None, settingsTab);
+    ESPUI.setElementStyle(cfgGroup, clearLabelStyle);
+    generalCfgIDs.idPollInterval = ESPUI.addControl(Number, "", String(generalCfg.pollInterval), None, cfgGroup, textCallback);
     ESPUI.addControl(Min, "", "10", None, generalCfgIDs.idPollInterval);
     ESPUI.addControl(Max, "", "32000", None, generalCfgIDs.idPollInterval);
 
+    ESPUI.setElementStyle(ESPUI.addControl(Label, "", "NTP Server : ", None, cfgGroup), clearLabelStyle);
+    generalCfgIDs.idNTPServer = ESPUI.addControl(Text, "", generalCfg.NTPServer, None, cfgGroup, textCallback);
+    ESPUI.addControl(Max, "", "127", None, generalCfgIDs.idNTPServer);
+
+    ESPUI.setElementStyle(ESPUI.addControl(Label, "", "UTC Offset : ", None, cfgGroup), clearLabelStyle);
+    generalCfgIDs.idUTCOffset = ESPUI.addControl(Number, "", String(generalCfg.UTCOffset), None, cfgGroup, generalCallback);
+    ESPUI.addControl(Min, "", "-23", None, generalCfgIDs.idUTCOffset);
+    ESPUI.addControl(Max, "", "23", None, generalCfgIDs.idUTCOffset);
+
     generalCfgIDs.idSave = ESPUI.addControl(Button, "Save / Reset", "Save", Peterriver, settingsTab, saveCfgCallback);
     generalCfgIDs.idReset = ESPUI.addControl(Button, "", "Reset", Peterriver, generalCfgIDs.idSave, resetCfgCallback);
+    generalCfgIDs.idSaveInfo = ESPUI.addControl(Label, "", "               ", Peterriver, generalCfgIDs.idSave, saveCfgCallback);
 
     ESPUI.addControl(Separator, "Found Sensors", "", None, settingsTab);
     generalCfgIDs.idFoundSensors = ESPUI.addControl(Label, "Found Sensors", getFoundSensorsList(), Turquoise, settingsTab, generalCallback);
@@ -118,6 +147,8 @@ void refreshSettings()
         ESPUI.updateControlValue(Units[i].IDs.idPlugPwd, Units[i].cfg.plugPwd);
     }
     ESPUI.updateControlValue(generalCfgIDs.idPollInterval, String(generalCfg.pollInterval));
+    ESPUI.updateControlValue(generalCfgIDs.idNTPServer, generalCfg.NTPServer);
+    ESPUI.updateControlValue(generalCfgIDs.idUTCOffset, String(generalCfg.UTCOffset));
 }
 
 void updateReadingsGUI(const std::map<std::string, SensorData> &readings)
@@ -161,6 +192,8 @@ void updateReadingsGUI(const std::map<std::string, SensorData> &readings)
             ESPUI.updateLabel(Units[i].IDs.idWater, LED_LABEL(gray, Unknown));
         }
     }
+
+    ESPUI.updateLabel(generalCfgIDs.idTime,getLocalTimeString());
 }
 
 String getFoundSensorsList()
@@ -208,7 +241,21 @@ void saveCfgCallback(Control *sender, int type)
         {
             HumSensors::setPollInterval(generalCfg.pollInterval);
         }
-        saveSystemCfg();
+        generalCfg.UTCOffset = atoi(ESPUI.getControl(generalCfgIDs.idUTCOffset)->value.c_str());
+        strncpy(generalCfg.NTPServer, ESPUI.getControl(generalCfgIDs.idNTPServer)->value.c_str(), sizeof(generalCfg.NTPServer));
+        generalCfg.NTPServer[sizeof(generalCfg.NTPServer) - 1] = 0;
+
+
+	    configTime(generalCfg.UTCOffset*3600, 0, generalCfg.NTPServer);
+
+        if(saveSystemCfg())
+        {
+            ESPUI.updateLabel(generalCfgIDs.idSaveInfo, "Successfully saved on "+getLocalTimeString());
+        }
+        else
+        {
+            ESPUI.updateLabel(generalCfgIDs.idSaveInfo, "Error saving config on "+getLocalTimeString());            
+        }
     }
 }
 
