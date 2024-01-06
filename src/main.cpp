@@ -97,6 +97,7 @@ void refreshPlugsData()
 
 void setup()
 {
+	//ESPUI.prepareFileSystem(); // Run only once
 	Serial.begin(115200);
 
 	Serial.println("sensors init");

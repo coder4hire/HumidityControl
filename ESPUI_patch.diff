@@ -1,0 +1,595 @@
+ src/ESPUI.cpp | 364 +++++++++++++---------------------------------------------
+ 1 file changed, 77 insertions(+), 287 deletions(-)
+
+diff --git a/src/ESPUI.cpp b/src/ESPUI.cpp
+index f214f98..98014be 100644
+--- a/src/ESPUI.cpp
++++ b/src/ESPUI.cpp
+@@ -3,6 +3,7 @@
+ #include <functional>
+ 
+ #include <ESPAsyncWebServer.h>
++#include <LittleFS.h>
+ 
+ #include "dataControlsJS.h"
+ #include "dataGraphJS.h"
+@@ -15,257 +16,99 @@
+ 
+ uint16_t Control::idCounter = 1;
+ 
+-// ################# LITTLEFS functions
+-#if defined(ESP32)
+-void listDir(const char* dirname, uint8_t levels)
+-{
+ #if defined(DEBUG_ESPUI)
+-    if (ESPUI.verbosity)
+-    {
+-        Serial.printf_P(PSTR("Listing directory: %s\n"), dirname);
+-    }
++    #define DEBUG_PRINTF(msg,...) Serial.printf(msg,__VA_ARGS__)
++    #define DEBUG_PRINTLN(msg) Serial.println(msg)
++#else 
++    #define DEBUG_PRINTF(msg,...)
++    #define DEBUG_PRINTLN(msg)
+ #endif
+ 
+-#if defined(ESP32)
+-    File root = LITTLEFS.open(dirname);
+-#else
+-    File root = LittleFS.open(dirname);
+-#endif
+-
+-    if (!root)
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Failed to open directory"));
+-        }
+-#endif
++// ################# LITTLEFS functions
++void listDir(const char * dirname, uint8_t levels){
++    
++    DEBUG_PRINTF("Listing directory: %s\r\n", dirname);
+ 
++    File root = LittleFS.open(dirname);
++    if(!root){
++        DEBUG_PRINTLN("- failed to open directory");
+         return;
+     }
+-
+-    if (!root.isDirectory())
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Not a directory"));
+-        }
+-#endif
+-
++    if(!root.isDirectory()){
++        DEBUG_PRINTLN(" - not a directory");
+         return;
+     }
+ 
+     File file = root.openNextFile();
++    while(file){
++        if(file.isDirectory()){
++            Serial.print("  DIR : ");
+ 
+-    while (file)
+-    {
+-        if (file.isDirectory())
+-        {
+-#if defined(DEBUG_ESPUI)
+-            if (ESPUI.verbosity)
+-            {
+-                Serial.print(F("  DIR : "));
+-                Serial.println(file.name());
+-            }
++#ifdef CONFIG_LITTLEFS_FOR_IDF_3_2
++            DEBUG_PRINTLN(file.name());
++#else
++            Serial.print(file.name());
++            time_t t= file.getLastWrite();
++            struct tm * tmstruct = localtime(&t);
++            DEBUG_PRINTF("  LAST WRITE: %d-%02d-%02d %02d:%02d:%02d\n",(tmstruct->tm_year)+1900,( tmstruct->tm_mon)+1, tmstruct->tm_mday,tmstruct->tm_hour , tmstruct->tm_min, tmstruct->tm_sec);
+ #endif
+ 
+-            if (levels)
+-            {
+-                listDir(file.name(), levels - 1);
+-            }
+-        }
+-        else
+-        {
+-#if defined(DEBUG_ESPUI)
+-            if (ESPUI.verbosity)
+-            {
+-                Serial.print(F("  FILE: "));
+-                Serial.print(file.name());
+-                Serial.print(F("  SIZE: "));
+-                Serial.println(file.size());
++            if(levels){
++                listDir(file.name(), levels -1);
+             }
++        } else {
++            Serial.print("  FILE: ");
++            Serial.print(file.name());
++            Serial.print("  SIZE: ");
++
++#ifdef CONFIG_LITTLEFS_FOR_IDF_3_2
++            DEBUG_PRINTLN(file.size());
++#else
++            Serial.print(file.size());
++            time_t t= file.getLastWrite();
++            struct tm * tmstruct = localtime(&t);
++            DEBUG_PRINTF("  LAST WRITE: %d-%02d-%02d %02d:%02d:%02d\n",(tmstruct->tm_year)+1900,( tmstruct->tm_mon)+1, tmstruct->tm_mday,tmstruct->tm_hour , tmstruct->tm_min, tmstruct->tm_sec);
+ #endif
+         }
+-
+         file = root.openNextFile();
+     }
+ }
+-#else
+-
+-void listDir(const char* dirname, uint8_t levels)
+-{
+-    // ignoring levels for esp8266
+-    Serial.printf_P(PSTR("Listing directory: %s\n"), dirname);
+-
+-    String str = "";
+-    Dir dir = LittleFS.openDir("/");
+-
+-    while (dir.next())
+-    {
+-        Serial.print(F("  FILE: "));
+-        Serial.print(dir.fileName());
+-        Serial.print(F("  SIZE: "));
+-        Serial.println(dir.fileSize());
+-    }
+-}
+-
+-#endif
+ 
+ void ESPUIClass::list()
+ {
+-#if defined(ESP32)
+-    if (!LITTLEFS.begin())
+-    {
+-        Serial.println(F("LITTLEFS Mount Failed"));
+-        return;
+-    }
+-#else
+     if (!LittleFS.begin())
+     {
+-        Serial.println(F("LittleFS Mount Failed"));
++        DEBUG_PRINTLN(F("LITTLEFS Mount Failed"));
+         return;
+     }
+-#endif
+ 
+     listDir("/", 1);
+-#if defined(ESP32)
+-
+-    Serial.println(LITTLEFS.totalBytes());
+-    Serial.println(LITTLEFS.usedBytes());
+-
+-#else
+-    FSInfo fs_info;
+-    LittleFS.info(fs_info);
+-
+-    Serial.println(fs_info.totalBytes);
+-    Serial.println(fs_info.usedBytes);
+-
+-#endif
++    DEBUG_PRINTLN(LittleFS.totalBytes());
++    DEBUG_PRINTLN(LittleFS.usedBytes());
+ }
+ 
+-void deleteFile(const char* path)
+-{
+-#if defined(ESP32)
+-    bool exists = LITTLEFS.exists(path);
+-#else
+-    bool exists = LittleFS.exists(path);
+-#endif
+-
+-    if (!exists)
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.printf_P(PSTR("File: %s does not exist, not deleting\n"), path);
+-        }
+-#endif
+-
+-        return;
+-    }
+-
+-#if defined(DEBUG_ESPUI)
+-    if (ESPUI.verbosity)
+-    {
+-        Serial.printf_P(PSTR("Deleting file: %s\n"), path);
+-    }
+-#endif
+-
+-#if defined(ESP32)
+-    bool didRemove = LITTLEFS.remove(path);
+-#else
+-    bool didRemove = LittleFS.remove(path);
+-#endif
+-    if (didRemove)
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("File deleted"));
+-        }
+-#endif
+-    }
+-    else
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Delete failed"));
+-        }
+-#endif
++void deleteFile(const char * path){
++    DEBUG_PRINTF("Deleting file: %s\r\n", path);
++    if(LittleFS.remove(path)){
++        DEBUG_PRINTLN("- file deleted");
++    } else {
++        DEBUG_PRINTLN("- delete failed");
+     }
+ }
+ 
+-void writeFile(const char* path, const char* data)
+-{
+-#if defined(DEBUG_ESPUI)
+-    if (ESPUI.verbosity)
+-    {
+-        Serial.printf_P(PSTR("Writing file: %s\n"), path);
+-    }
+-#endif
++void writeFile(const char * path, const char * message){
++    DEBUG_PRINTF("Writing file: %s\r\n", path);
+ 
+-#if defined(ESP32)
+-    File file = LITTLEFS.open(path, FILE_WRITE);
+-#else
+     File file = LittleFS.open(path, FILE_WRITE);
+-#endif
+-
+-    if (!file)
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Failed to open file for writing"));
+-        }
+-#endif
+-
++    if(!file){
++        DEBUG_PRINTLN("- failed to open file for writing");
+         return;
+     }
+-
+-#if defined(ESP32)
+-
+-    if (file.print(data))
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("File written"));
+-        }
+-#endif
+-    }
+-    else
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Write failed"));
+-        }
+-#endif
+-    }
+-
+-#else
+-
+-    if (file.print(FPSTR(data)))
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("File written"));
+-        }
+-#endif
+-    }
+-    else
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (ESPUI.verbosity)
+-        {
+-            Serial.println(F("Write failed"));
+-        }
+-#endif
++    if(file.print(message)){
++        DEBUG_PRINTLN("- file written");
++    } else {
++        DEBUG_PRINTLN("- write failed");
+     }
+-
+-#endif
+     file.close();
+ }
+ 
+@@ -278,46 +121,13 @@ void ESPUIClass::prepareFileSystem()
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity)
+     {
+-        Serial.println(F("About to prepare filesystem..."));
+-    }
+-#endif
+-
+-#if defined(ESP32)
+-    LITTLEFS.format();
+-
+-    if (!LITTLEFS.begin(true))
+-    {
+-#if defined(DEBUG_ESPUI)
+-        if (this->verbosity)
+-        {
+-            Serial.println(F("LITTLEFS Mount Failed"));
+-        }
+-#endif
+-
+-        return;
+-    }
+-
+-#if defined(DEBUG_ESPUI)
+-    if (this->verbosity)
+-    {
+-        listDir("/", 1);
+-        Serial.println(F("LITTLEFS Mount ESP32 Done"));
++        DEBUG_PRINTLN(F("About to prepare filesystem..."));
+     }
+ #endif
+ 
+-#else
+     LittleFS.format();
+     LittleFS.begin();
+ 
+-#if defined(DEBUG_ESPUI)
+-    if (this->verbosity)
+-    {
+-        Serial.println(F("LITTLEFS Mount ESP8266 Done"));
+-    }
+-#endif
+-
+-#endif
+-
+     deleteFile("/index.htm");
+ 
+     deleteFile("/css/style.css");
+@@ -332,7 +142,7 @@ void ESPUIClass::prepareFileSystem()
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity)
+     {
+-        Serial.println(F("Cleanup done"));
++        DEBUG_PRINTLN(F("Cleanup done"));
+     }
+ #endif
+ 
+@@ -352,7 +162,7 @@ void ESPUIClass::prepareFileSystem()
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity)
+     {
+-        Serial.println(F("Done Initializing filesystem :-)"));
++        DEBUG_PRINTLN(F("Done Initializing filesystem :-)"));
+     }
+ #endif
+ 
+@@ -367,11 +177,7 @@ void ESPUIClass::prepareFileSystem()
+ 
+ #endif
+ 
+-#if defined(ESP32)
+-    LITTLEFS.end();
+-#else
+     LittleFS.end();
+-#endif
+ }
+ 
+ // Handle Websockets Communication
+@@ -418,7 +224,7 @@ void onWsEvent(
+         if (ESPUI.verbosity)
+         {
+             Serial.print(F("Connected: "));
+-            Serial.println(client->id());
++            DEBUG_PRINTLN(client->id());
+         }
+ #endif
+ 
+@@ -427,7 +233,7 @@ void onWsEvent(
+ #if defined(DEBUG_ESPUI)
+         if (ESPUI.verbosity)
+         {
+-            Serial.println(F("JSON Data Sent to Client!"));
++            DEBUG_PRINTLN(F("JSON Data Sent to Client!"));
+         }
+ #endif
+     }
+@@ -454,9 +260,9 @@ void onWsEvent(
+             if (ESPUI.verbosity >= Verbosity::VerboseJSON)
+             {
+                 Serial.print(F("WS rec: "));
+-                Serial.println(msg);
++                DEBUG_PRINTLN(msg);
+                 Serial.print(F("WS recognised ID: "));
+-                Serial.println(id);
++                DEBUG_PRINTLN(id);
+             }
+     #endif
+ 
+@@ -468,7 +274,7 @@ void onWsEvent(
+                 if (ESPUI.verbosity)
+                 {
+                     Serial.print(F("No control found for ID "));
+-                    Serial.println(id);
++                    DEBUG_PRINTLN(id);
+                 }
+     #endif
+ 
+@@ -481,7 +287,7 @@ void onWsEvent(
+                 if (ESPUI.verbosity)
+                 {
+                     Serial.print(F("No callback found for ID "));
+-                    Serial.println(id);
++                    DEBUG_PRINTLN(id);
+                 }
+     #endif
+ 
+@@ -587,7 +393,7 @@ void onWsEvent(
+     #if defined(DEBUG_ESPUI)
+                 if (ESPUI.verbosity)
+                 {
+-                    Serial.println(F("Malformated message from the websocket"));
++                    DEBUG_PRINTLN(F("Malformated message from the websocket"));
+                 }
+     #endif
+             }
+@@ -793,7 +599,7 @@ void ESPUIClass::updateControl(Control* control, int clientId)
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity >= Verbosity::VerboseJSON)
+     {
+-        Serial.println(json);
++        DEBUG_PRINTLN(json);
+     }
+ #endif
+ 
+@@ -802,7 +608,7 @@ void ESPUIClass::updateControl(Control* control, int clientId)
+ #if defined(DEBUG_ESPUI)
+         if (this->verbosity >= Verbosity::VerboseJSON)
+         {
+-            Serial.println(F("TextAll"));
++            DEBUG_PRINTLN(F("TextAll"));
+         }
+ #endif
+         this->ws->textAll(json);
+@@ -1001,7 +807,7 @@ void ESPUIClass::addGraphPoint(uint16_t id, int nValue, int clientId)
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity >= Verbosity::VerboseJSON)
+     {
+-        Serial.println(json);
++        DEBUG_PRINTLN(json);
+     }
+ #endif
+ 
+@@ -1025,7 +831,7 @@ void ESPUIClass::addGraphPoint(uint16_t id, int nValue, int clientId)
+ #if defined(DEBUG_ESPUI)
+                 if (this->verbosity >= Verbosity::VerboseJSON)
+                 {
+-                    Serial.println(json);
++                    DEBUG_PRINTLN(json);
+                 }
+ #endif
+             }
+@@ -1080,8 +886,8 @@ void ESPUIClass::jsonDom(uint16_t startidx, AsyncWebSocketClient* client)
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity >= Verbosity::VerboseJSON)
+     {
+-        Serial.println("Sending elements --------->");
+-        Serial.println(json);
++        DEBUG_PRINTLN("Sending elements --------->");
++        DEBUG_PRINTLN(json);
+     }
+ #endif
+     if (client != nullptr)
+@@ -1166,7 +972,7 @@ void ESPUIClass::jsonReload()
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity >= Verbosity::VerboseJSON)
+     {
+-        Serial.println(json);
++        DEBUG_PRINTLN(json);
+     }
+ #endif
+ 
+@@ -1197,17 +1003,13 @@ void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const c
+     server = new AsyncWebServer(port);
+     ws = new AsyncWebSocket("/ws");
+ 
+-#if defined(ESP32)
+-    bool fsBegin = LITTLEFS.begin();
+-#else
+     bool fsBegin = LittleFS.begin();
+-#endif
+     if (!fsBegin)
+     {
+ #if defined(DEBUG_ESPUI)
+         if (ESPUI.verbosity)
+         {
+-            Serial.println(F("LITTLEFS Mount Failed, PLEASE CHECK THE README ON HOW TO "
++            DEBUG_PRINTLN(F("LITTLEFS Mount Failed, PLEASE CHECK THE README ON HOW TO "
+                              "PREPARE YOUR ESP!!!!!!!"));
+         }
+ #endif
+@@ -1222,17 +1024,13 @@ void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const c
+     }
+ #endif
+ 
+-#if defined(ESP32)
+-    bool indexExists = LITTLEFS.exists("/index.htm");
+-#else
+     bool indexExists = LittleFS.exists("/index.htm");
+-#endif
+     if (!indexExists)
+     {
+ #if defined(DEBUG_ESPUI)
+         if (ESPUI.verbosity)
+         {
+-            Serial.println(F("Please read the README!!!!!!!, Make sure to "
++            DEBUG_PRINTLN(F("Please read the README!!!!!!!, Make sure to "
+                              "ESPUI.prepareFileSystem() once in an empty sketch"));
+         }
+ #endif
+@@ -1249,19 +1047,11 @@ void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const c
+         {
+             ws->setAuthentication(ESPUI.basicAuthUsername, ESPUI.basicAuthPassword);
+         }
+-#if defined(ESP32)
+-        server->serveStatic("/", LITTLEFS, "/").setDefaultFile("index.htm").setAuthentication(username, password);
+-#else
+         server->serveStatic("/", LittleFS, "/").setDefaultFile("index.htm").setAuthentication(username, password);
+-#endif
+     }
+     else
+     {
+-#if defined(ESP32)
+-        server->serveStatic("/", LITTLEFS, "/").setDefaultFile("index.htm");
+-#else
+         server->serveStatic("/", LittleFS, "/").setDefaultFile("index.htm");
+-#endif
+     }
+ 
+     // Heap for general Servertest
+@@ -1281,7 +1071,7 @@ void ESPUIClass::beginLITTLEFS(const char* _title, const char* username, const c
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity)
+     {
+-        Serial.println(F("UI Initialized"));
++        DEBUG_PRINTLN(F("UI Initialized"));
+     }
+ #endif
+ }
+@@ -1426,7 +1216,7 @@ void ESPUIClass::begin(const char* _title, const char* username, const char* pas
+ #if defined(DEBUG_ESPUI)
+     if (this->verbosity)
+     {
+-        Serial.println(F("UI Initialized"));
++        DEBUG_PRINTLN(F("UI Initialized"));
+     }
+ #endif
+ }

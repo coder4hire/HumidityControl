@@ -1,5 +1,6 @@
 #pragma once
 #include "SmartPlugInterface.h"
+#include <vector>
 
 #define LOG_INFO
 
